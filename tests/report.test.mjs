@@ -255,3 +255,103 @@ describe("generateReport — edge cases", () => {
     assert.ok(report.includes("not installed"), "failure reason should appear");
   });
 });
+
+// ─── Config header (R15) ────────────────────────────────────────────────────
+
+describe("generateReport — config header", () => {
+  /** @returns {import('../scripts/lib/config.mjs').ResolvedConfig} */
+  function defaultConfig(overrides = {}) {
+    return {
+      providers: {
+        codex: { enabled: true },
+        gemini: { enabled: true },
+        claude: { enabled: true, model: "sonnet" },
+      },
+      timeout: 120,
+      ...overrides,
+    };
+  }
+
+  it("shows active providers with model and timeout", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], gemini: [], claude: [] }));
+    const config = defaultConfig();
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("claude (sonnet)"), `should show claude model. got:\n${report}`);
+    assert.ok(report.includes("**Timeout:** 120s"), `should show timeout. got:\n${report}`);
+  });
+
+  it("shows disabled providers", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], claude: [] }));
+    const config = defaultConfig({
+      providers: {
+        codex: { enabled: true },
+        gemini: { enabled: false },
+        claude: { enabled: true, model: "sonnet" },
+      },
+    });
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("**Disabled:** gemini"), `should show disabled. got:\n${report}`);
+  });
+
+  it("omits Disabled segment when all providers enabled", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], gemini: [], claude: [] }));
+    const config = defaultConfig();
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(!report.includes("**Disabled:**"), `should not have Disabled. got:\n${report}`);
+  });
+
+  it("shows custom timeout", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], gemini: [] }));
+    const config = defaultConfig({ timeout: 60 });
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("**Timeout:** 60s"), `should show 60s. got:\n${report}`);
+  });
+
+  it("shows custom model", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], claude: [] }));
+    const config = defaultConfig({
+      providers: {
+        codex: { enabled: true },
+        gemini: { enabled: false },
+        claude: { enabled: true, model: "opus" },
+      },
+    });
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("claude (opus)"), `should show opus. got:\n${report}`);
+  });
+
+  it("no config passed → no config header (backward compat)", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ codex: [fa], gemini: [] }));
+    const report = generateReport(matchResult, noFailures);
+
+    assert.ok(!report.includes("**Timeout:**"), `should not have config header. got:\n${report}`);
+    assert.ok(!report.includes("**Disabled:**"), `should not have disabled. got:\n${report}`);
+  });
+
+  it("multiple disabled providers listed", () => {
+    const fa = makeFinding();
+    const matchResult = matchFindings(makeResults({ claude: [fa] }));
+    const config = defaultConfig({
+      providers: {
+        codex: { enabled: false },
+        gemini: { enabled: false },
+        claude: { enabled: true, model: "sonnet" },
+      },
+    });
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("codex"), `should list codex as disabled. got:\n${report}`);
+    assert.ok(report.includes("gemini"), `should list gemini as disabled. got:\n${report}`);
+  });
+});
