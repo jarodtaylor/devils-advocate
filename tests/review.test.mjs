@@ -83,7 +83,7 @@ function mockProvider(opts = {}) {
 describe("parseArgs — happy paths", () => {
   it("returns defaults when called with no args", () => {
     const result = parseArgs([]);
-    assert.deepEqual(result, { verbose: false, files: [] });
+    assert.deepEqual(result, { verbose: false, files: [], disable: [] });
   });
 
   it("parses --branch correctly", () => {
@@ -147,6 +147,124 @@ describe("parseArgs — diff range syntax", () => {
     const result = parseArgs(["--diff", "main..HEAD", "--files", "src/auth.ts"]);
     assert.equal(result.diff, "main..HEAD");
     assert.deepEqual(result.files, ["src/auth.ts"]);
+  });
+});
+
+// ─── parseArgs — --timeout and --disable flags ────────────────────────────────
+
+describe("parseArgs — --timeout flag", () => {
+  it("parses --timeout with a valid positive number", () => {
+    const result = parseArgs(["--timeout", "60"]);
+    assert.equal(result.timeout, 60);
+  });
+
+  it("parses --timeout with a decimal value", () => {
+    const result = parseArgs(["--timeout", "30.5"]);
+    assert.equal(result.timeout, 30.5);
+  });
+
+  it("combines --timeout with other flags", () => {
+    const result = parseArgs(["--timeout", "60", "--disable", "gemini", "--branch", "main"]);
+    assert.equal(result.timeout, 60);
+    assert.deepEqual(result.disable, ["gemini"]);
+    assert.equal(result.branch, "main");
+  });
+
+  it("throws when --timeout has no value", () => {
+    assert.throws(
+      () => parseArgs(["--timeout"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("requires a value"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout is followed by another flag", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "--verbose"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("requires a value"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is non-numeric", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "abc"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is negative", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "-5"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is zero", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "0"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+});
+
+describe("parseArgs — --disable flag", () => {
+  it("parses --disable with a single provider", () => {
+    const result = parseArgs(["--disable", "gemini"]);
+    assert.deepEqual(result.disable, ["gemini"]);
+  });
+
+  it("parses --disable with multiple providers in one invocation", () => {
+    const result = parseArgs(["--disable", "codex", "gemini"]);
+    assert.deepEqual(result.disable, ["codex", "gemini"]);
+  });
+
+  it("accumulates providers across repeated --disable flags", () => {
+    const result = parseArgs(["--disable", "codex", "--disable", "gemini"]);
+    assert.deepEqual(result.disable, ["codex", "gemini"]);
+  });
+
+  it("throws when --disable has no value", () => {
+    assert.throws(
+      () => parseArgs(["--disable"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes(`Flag "--disable" requires at least one provider name`), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --disable is followed immediately by another flag", () => {
+    assert.throws(
+      () => parseArgs(["--disable", "--verbose"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--disable"), `got: ${err.message}`);
+        assert.ok(err.message.includes("at least one provider name"), `got: ${err.message}`);
+        return true;
+      }
+    );
   });
 });
 

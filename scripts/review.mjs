@@ -28,6 +28,8 @@ import { claudeProvider } from "./lib/providers/claude.mjs";
  * @property {string} [diff]      - Explicit diff range (e.g. "main..HEAD").
  * @property {string[]} [files]   - Limit diff to these file paths.
  * @property {boolean} verbose    - Include raw provider output in the report.
+ * @property {number} [timeout]   - Per-provider timeout in seconds.
+ * @property {string[]} [disable] - Provider names to skip.
  */
 
 /**
@@ -47,9 +49,9 @@ import { claudeProvider } from "./lib/providers/claude.mjs";
  */
 export function parseArgs(argv) {
   /** @type {ReviewArgs} */
-  const args = { verbose: false, files: [] };
+  const args = { verbose: false, files: [], disable: [] };
 
-  const knownFlags = new Set(["--branch", "--worktree", "--diff", "--files", "--verbose"]);
+  const knownFlags = new Set(["--branch", "--worktree", "--diff", "--files", "--verbose", "--timeout", "--disable"]);
 
   let i = 0;
   while (i < argv.length) {
@@ -59,14 +61,14 @@ export function parseArgs(argv) {
       // Bare values without a preceding flag are not supported.
       throw new Error(
         `Unexpected argument "${token}". ` +
-        `Use --branch, --worktree, --diff, --files, or --verbose.`
+        `Use --branch, --worktree, --diff, --files, --verbose, --timeout, or --disable.`
       );
     }
 
     if (!knownFlags.has(token)) {
       throw new Error(
         `Unknown flag "${token}". ` +
-        `Supported flags: --branch, --worktree, --diff, --files, --verbose.`
+        `Supported flags: --branch, --worktree, --diff, --files, --verbose, --timeout, --disable.`
       );
     }
 
@@ -101,6 +103,39 @@ export function parseArgs(argv) {
           throw new Error(`Flag "--files" requires at least one file path.`);
         }
         args.files = paths;
+        break;
+      }
+
+      case "--timeout": {
+        const raw = argv[i + 1];
+        if (raw === undefined || raw.startsWith("--")) {
+          throw new Error(`Flag "--timeout" requires a value.`);
+        }
+        const value = parseFloat(raw);
+        if (isNaN(value)) {
+          throw new Error(`Flag "--timeout" requires a numeric value, got "${raw}".`);
+        }
+        if (value <= 0) {
+          throw new Error(`Flag "--timeout" requires a positive number, got "${raw}".`);
+        }
+        args.timeout = value;
+        i += 2;
+        break;
+      }
+
+      case "--disable": {
+        // Collect all following non-flag tokens as provider names, accumulating
+        // across repeated --disable invocations (unlike --files which replaces).
+        const names = [];
+        i++;
+        while (i < argv.length && !argv[i].startsWith("--")) {
+          names.push(argv[i]);
+          i++;
+        }
+        if (names.length === 0) {
+          throw new Error(`Flag "--disable" requires at least one provider name.`);
+        }
+        args.disable = (args.disable ?? []).concat(names);
         break;
       }
 
