@@ -177,9 +177,11 @@ function parseCodexJsonl(stdout) {
  * Pass a custom `spawnFn` in tests to avoid requiring Codex CLI to be installed.
  *
  * @param {typeof nodeSpawn} [spawnFn] - spawn implementation; defaults to node:child_process spawn.
+ * @param {{ timeoutMs?: number }} [opts] - Optional configuration overrides.
  * @returns {import('../types.mjs').Provider & { name: string }}
  */
-export function createCodexProvider(spawnFn = nodeSpawn) {
+export function createCodexProvider(spawnFn = nodeSpawn, opts = {}) {
+  const factoryTimeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const spawnCollect = makeSpawnCollect(spawnFn);
 
   /**
@@ -245,7 +247,7 @@ export function createCodexProvider(spawnFn = nodeSpawn) {
      * @param {number} [timeoutMs]
      * @returns {Promise<import('../types.mjs').ReviewResult>}
      */
-    async review(diffText, files, promptContext = "", timeoutMs = DEFAULT_TIMEOUT_MS) {
+    async review(diffText, files, promptContext = "", timeoutMs = factoryTimeoutMs) {
       const renderedPrompt = buildPrompt(diffText, files, promptContext);
       const schemaPath = getSchemaPath();
 

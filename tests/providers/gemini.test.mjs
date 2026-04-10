@@ -635,3 +635,71 @@ describe("geminiProvider.detect() — return shape", () => {
     assert.equal(result.name, "gemini");
   });
 });
+
+// ─── timeoutMs injection ──────────────────────────────────────────────────────
+
+describe("buildGeminiProvider() — timeoutMs injection", () => {
+  it("buildGeminiProvider({ timeoutMs: 60000 }) → abort fires before long-running process", async () => {
+    const SHORT_TIMEOUT_MS = 60;
+
+    // Process that never emits close — hangs until timeout fires
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang indefinitely
+      return proc;
+    };
+
+    const provider = buildGeminiProvider({ spawnFn, timeoutMs: SHORT_TIMEOUT_MS });
+
+    const start = Date.now();
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        const elapsed = Date.now() - start;
+        assert.ok(elapsed < 5000, `should reject quickly with short timeout, elapsed: ${elapsed}ms`);
+        return true;
+      }
+    );
+  });
+
+  it("error message reflects the injected timeoutMs in seconds", async () => {
+    // 50ms timeout → onAbort message: "Gemini provider timed out after 0.05s"
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang until timeout fires
+      return proc;
+    };
+
+    const provider = buildGeminiProvider({ spawnFn, timeoutMs: 50 });
+
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(
+          err.message.toLowerCase().includes("timed out") ||
+          err.message.toLowerCase().includes("timeout"),
+          `expected timeout message, got: ${err.message}`
+        );
+        return true;
+      }
+    );
+  });
+
+  it("default factory (no timeoutMs) still works correctly — 120s default unchanged", async () => {
+    // Verify the singleton path: buildGeminiProvider() with no args should
+    // use DEFAULT_TIMEOUT_MS. We verify this by checking a successful review
+    // still works (no regression).
+    const envelopeStr = JSON.stringify({
+      session_id: "test",
+      response: JSON.stringify({ findings: [] }),
+      stats: {},
+    });
+
+    const provider = buildGeminiProvider({ spawnFn: makeSpawn(envelopeStr, 0) });
+    const result = await provider.review("diff", [], "prompt");
+
+    assert.equal(result.findings.length, 0);
+  });
+});

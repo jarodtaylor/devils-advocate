@@ -511,3 +511,113 @@ describe("claudeProvider.review() — return shape", () => {
     assert.equal(typeof result.raw, "string", "raw must be string");
   });
 });
+
+// ─── model injection ──────────────────────────────────────────────────────────
+
+describe("buildClaudeProvider() — model injection", () => {
+  it("default factory → uses 'sonnet' in --model flag", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn) });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "sonnet", "default model should be sonnet");
+  });
+
+  it("buildClaudeProvider({ model: 'opus' }) → passes 'opus' to --model", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), model: "opus" });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "opus", "model should be opus");
+  });
+
+  it("buildClaudeProvider({ model: 'haiku' }) → passes 'haiku' to --model", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), model: "haiku" });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "haiku", "model should be haiku");
+  });
+});
+
+// ─── timeoutMs injection ──────────────────────────────────────────────────────
+
+describe("buildClaudeProvider() — timeoutMs injection", () => {
+  it("buildClaudeProvider({ timeoutMs: 60000 }) → AbortController fires before long-running process", async () => {
+    // Inject a short timeoutMs and verify the review rejects well before the
+    // default 120s would fire, proving the injected value is used.
+    const SHORT_TIMEOUT_MS = 60;
+
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang indefinitely until timeout fires
+      return proc;
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), timeoutMs: SHORT_TIMEOUT_MS });
+
+    const start = Date.now();
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        const elapsed = Date.now() - start;
+        assert.ok(elapsed < 5000, `should reject quickly with short timeout, elapsed: ${elapsed}ms`);
+        return true;
+      }
+    );
+  });
+
+  it("error message reflects the injected timeoutMs in seconds", async () => {
+    // 50ms timeout → onAbort message: "Claude provider timed out after 0.05s"
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang until timeout fires
+      return proc;
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), timeoutMs: 50 });
+
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(
+          err.message.includes("timed out") || err.message.includes("timeout"),
+          `expected timeout message, got: ${err.message}`
+        );
+        return true;
+      }
+    );
+  });
+});

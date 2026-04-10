@@ -51,22 +51,24 @@ function checkInstalled(spawnFn) {
  * Flags used:
  *   `-p <prompt>` — print mode (non-interactive, exits after response)
  *   `--output-format json` — structured JSON envelope
- *   `--model sonnet` — Sonnet for speed/cost; different perspective from Opus
+ *   `--model <model>` — model name; default "sonnet" for speed/cost
  *   `--no-input` — disables any interactive stdin prompts from Claude Code itself
  *
  * @param {string} renderedPrompt
  * @param {AbortSignal} signal
  * @param {typeof nodeSpawn} spawnFn
+ * @param {string} model - Model name to pass to --model flag.
+ * @param {number} timeoutMs - Timeout in ms for the error message.
  * @returns {Promise<string>} raw stdout
  */
-function runClaude(renderedPrompt, signal, spawnFn) {
+function runClaude(renderedPrompt, signal, spawnFn, model, timeoutMs) {
   const promptBytes = Buffer.byteLength(renderedPrompt, "utf8");
   const useStdin = promptBytes > PROMPT_ARG_SIZE_LIMIT;
 
   /** @type {string[]} */
   const args = useStdin
-    ? ["-p", "-", "--output-format", "json", "--model", "sonnet", "--no-input"]
-    : ["-p", renderedPrompt, "--output-format", "json", "--model", "sonnet", "--no-input"];
+    ? ["-p", "-", "--output-format", "json", "--model", model, "--no-input"]
+    : ["-p", renderedPrompt, "--output-format", "json", "--model", model, "--no-input"];
 
   /** @type {import('node:child_process').SpawnOptions} */
   const spawnOpts = {
@@ -100,7 +102,7 @@ function runClaude(renderedPrompt, signal, spawnFn) {
       } catch {
         // already exited
       }
-      reject(new Error(`Claude provider timed out after ${DEFAULT_TIMEOUT_MS / 1000}s`));
+      reject(new Error(`Claude provider timed out after ${timeoutMs / 1000}s`));
     };
 
     if (signal.aborted) {
@@ -214,11 +216,15 @@ function parseClaudeOutput(stdout) {
  *
  * @param {{
  *   spawnFn?: typeof nodeSpawn,
+ *   model?: string,
+ *   timeoutMs?: number,
  * }} [deps]
  * @returns {import('../types.mjs').Provider & { name: string }}
  */
 export function buildClaudeProvider(deps = {}) {
   const spawnFn = deps.spawnFn ?? nodeSpawn;
+  const model = deps.model ?? "sonnet";
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return {
     name: PROVIDER_NAME,
@@ -263,11 +269,11 @@ export function buildClaudeProvider(deps = {}) {
       const renderedPrompt = prompt || buildPrompt(diffText, files);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       let raw;
       try {
-        raw = await runClaude(renderedPrompt, controller.signal, spawnFn);
+        raw = await runClaude(renderedPrompt, controller.signal, spawnFn, model, timeoutMs);
       } finally {
         clearTimeout(timeoutId);
       }

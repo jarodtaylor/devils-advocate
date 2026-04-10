@@ -101,9 +101,10 @@ async function checkAuth(readFileFn) {
  * @param {string} renderedPrompt
  * @param {AbortSignal} signal
  * @param {typeof nodeSpawn} spawnFn
+ * @param {number} timeoutMs - Timeout in ms for the error message.
  * @returns {Promise<string>} raw stdout
  */
-async function runGemini(renderedPrompt, signal, spawnFn) {
+async function runGemini(renderedPrompt, signal, spawnFn, timeoutMs) {
   const promptBytes = Buffer.byteLength(renderedPrompt, "utf8");
   const useTempFile = promptBytes > PROMPT_ARG_SIZE_LIMIT;
 
@@ -159,7 +160,7 @@ async function runGemini(renderedPrompt, signal, spawnFn) {
         } catch {
           // already exited
         }
-        reject(new Error(`Gemini provider timed out after ${DEFAULT_TIMEOUT_MS / 1000}s`));
+        reject(new Error(`Gemini provider timed out after ${timeoutMs / 1000}s`));
       };
 
       if (signal.aborted) {
@@ -217,12 +218,14 @@ async function runGemini(renderedPrompt, signal, spawnFn) {
  * @param {{
  *   spawnFn?: typeof nodeSpawn,
  *   readFileFn?: typeof readFile,
+ *   timeoutMs?: number,
  * }} [deps]
  * @returns {import('../types.mjs').Provider}
  */
 export function buildGeminiProvider(deps = {}) {
   const spawnFn = deps.spawnFn ?? nodeSpawn;
   const readFileFn = deps.readFileFn ?? readFile;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return {
     /**
@@ -264,11 +267,11 @@ export function buildGeminiProvider(deps = {}) {
       const renderedPrompt = prompt || buildPrompt(diffText, files);
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       let raw;
       try {
-        raw = await runGemini(renderedPrompt, controller.signal, spawnFn);
+        raw = await runGemini(renderedPrompt, controller.signal, spawnFn, timeoutMs);
       } finally {
         clearTimeout(timeoutId);
       }
