@@ -1,0 +1,11 @@
+{
+  "name": "da",
+  "version": "0.1.0",
+  "description": "Multi-model adversarial code review. Sends diffs to external AI tools in parallel, surfaces structured disagreement.",
+  "author": {
+    "name": "Jarod Taylor"
+  },
+  "repository": "https://github.com/jarodtaylor/devils-advocate",
+  "license": "MIT",
+  "keywords": ["code-review", "adversarial", "multi-model"]
+}
