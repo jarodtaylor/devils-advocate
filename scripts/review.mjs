@@ -15,9 +15,10 @@ import { collectDiff } from "./lib/diff.mjs";
 import { orchestrate, R5Error } from "./lib/orchestrate.mjs";
 import { matchFindings } from "./lib/matcher.mjs";
 import { generateReport } from "./lib/report.mjs";
-import { codexProvider } from "./lib/providers/codex.mjs";
-import { geminiProvider } from "./lib/providers/gemini.mjs";
-import { claudeProvider } from "./lib/providers/claude.mjs";
+import { createCodexProvider } from "./lib/providers/codex.mjs";
+import { buildGeminiProvider } from "./lib/providers/gemini.mjs";
+import { buildClaudeProvider } from "./lib/providers/claude.mjs";
+import { loadConfig, ConfigError } from "./lib/config.mjs";
 
 // ─── Argument parser ─────────────────────────────────────────────────────────
 
@@ -161,7 +162,11 @@ export function parseArgs(argv) {
  * @returns {Promise<string>} The generated Markdown report.
  */
 export async function runReview(args, providers) {
-  // Step 1: collect diff
+  // Step 1: load config (merge CLI overrides with file-based config)
+  const cliOverrides = buildCliOverrides(args);
+  const config = await loadConfig(cliOverrides);
+
+  // Step 2: collect diff
   const diffResult = await collectDiff({
     branch: args.branch,
     worktree: args.worktree,
@@ -179,53 +184,111 @@ export async function runReview(args, providers) {
     ].join("\n");
   }
 
-  // Step 2: build the providers array (default: codex + gemini)
-  const resolvedProviders = providers ?? buildProviders();
+  // Step 3: build the providers array (filtered by config, or use test override)
+  const resolvedProviders = providers ?? buildProviders(config);
 
-  // Step 3: run orchestrator (detect, parallel review, validate)
-  const { results, failures } = await orchestrate(diffResult, resolvedProviders);
+  // Step 4: run orchestrator (detect, parallel review, validate)
+  const { results, failures } = await orchestrate(diffResult, resolvedProviders, {
+    timeout: config.timeout * 1000,
+  });
 
-  // Step 4: match findings across providers
+  // Step 5: match findings across providers
   const matchResult = matchFindings(results);
 
-  // Step 5: collect raw outputs for --verbose mode
+  // Step 6: collect raw outputs for --verbose mode
   /** @type {Map<string, string>} */
   const rawOutputs = new Map();
   for (const [name, result] of results) {
     rawOutputs.set(name, result.raw);
   }
 
-  // Step 6: generate report
+  // Step 7: generate report
   const report = generateReport(matchResult, failures, {
     verbose: args.verbose,
     rawOutputs,
+    config,
   });
 
   return report;
 }
 
+// ─── CLI overrides builder ───────────────────────────────────────────────────
+
+/**
+ * Convert parsed CLI args into the config overlay shape expected by loadConfig.
+ *
+ * @param {ReviewArgs} args
+ * @returns {Record<string, unknown>}
+ */
+function buildCliOverrides(args) {
+  /** @type {Record<string, unknown>} */
+  const overrides = {};
+
+  if (args.timeout !== undefined) {
+    overrides.timeout = args.timeout;
+  }
+
+  if (args.disable && args.disable.length > 0) {
+    /** @type {Record<string, { enabled: boolean }>} */
+    const providers = {};
+    for (const name of args.disable) {
+      providers[name] = { enabled: false };
+    }
+    overrides.providers = providers;
+  }
+
+  return overrides;
+}
+
 // ─── Provider builder ─────────────────────────────────────────────────────────
 
 /**
- * Build the default provider list, ensuring each has a `name` property.
- * The gemini provider's `name` comes from detect() results only, so we
- * attach it here for the orchestrator.
+ * Build the provider list from resolved config. Only constructs providers
+ * where `enabled !== false`. Checks that at least 2 providers are enabled
+ * before calling detect (fail-fast with config-aware message).
  *
+ * @param {import('./lib/config.mjs').ResolvedConfig} config
  * @returns {Array<import('./lib/types.mjs').Provider & { name: string }>}
  */
-function buildProviders() {
-  // codexProvider already has `name: "codex"` on the object.
-  const codex = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (codexProvider);
+export function buildProviders(config) {
+  const timeoutMs = config.timeout * 1000;
 
-  // geminiProvider exposes `name` in detect() results only — add it to the object.
-  const gemini = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (
-    Object.assign(geminiProvider, { name: "gemini" })
-  );
+  /** @type {Array<import('./lib/types.mjs').Provider & { name: string }>} */
+  const providers = [];
 
-  // claudeProvider already has `name: "claude"` on the object.
-  const claude = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (claudeProvider);
+  if (config.providers.codex.enabled !== false) {
+    const codex = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (
+      createCodexProvider(undefined, { timeoutMs })
+    );
+    providers.push(codex);
+  }
 
-  return [codex, gemini, claude];
+  if (config.providers.gemini.enabled !== false) {
+    const gemini = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (
+      Object.assign(buildGeminiProvider({ timeoutMs }), { name: "gemini" })
+    );
+    providers.push(gemini);
+  }
+
+  if (config.providers.claude.enabled !== false) {
+    const claude = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (
+      buildClaudeProvider({ model: config.providers.claude.model, timeoutMs })
+    );
+    providers.push(claude);
+  }
+
+  if (providers.length < 2) {
+    const enabled = providers.map((p) => p.name);
+    throw new R5Error(
+      `At least 2 providers must be enabled. Currently enabled: ${enabled.join(", ") || "none"}. ` +
+        `Check your config or --disable flags.`,
+      Object.fromEntries(
+        enabled.map((n) => [n, { stage: "config", reason: "enabled" }])
+      )
+    );
+  }
+
+  return providers;
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────
@@ -247,6 +310,14 @@ async function main() {
     process.stdout.write(report + "\n");
     process.exit(0);
   } catch (/** @type {unknown} */ err) {
+    if (err instanceof ConfigError) {
+      const parts = [`Error: ${err.message}`];
+      if (err.filePath) parts.push(`  Config source: ${err.filePath}`);
+      if (err.field) parts.push(`  Field: ${err.field}`);
+      process.stderr.write(parts.join("\n") + "\n");
+      process.exit(2);
+    }
+
     if (err instanceof R5Error) {
       // Structured provider error — surface per-provider statuses.
       const lines = [

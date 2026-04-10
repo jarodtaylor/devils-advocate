@@ -11,7 +11,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseArgs, runReview } from "../scripts/review.mjs";
+import { parseArgs, runReview, buildProviders } from "../scripts/review.mjs";
+import { DEFAULTS, ConfigError } from "../scripts/lib/config.mjs";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -523,5 +524,78 @@ describe("runReview — exported signature", () => {
     // by mocking the collectDiff dependency indirectly.
     // (Deep integration test is covered in the pipeline tests above.)
     assert.equal(typeof runReview, "function");
+  });
+});
+
+// ─── buildProviders — config-aware provider construction ─────────────────────
+
+describe("buildProviders — config filtering", () => {
+  it("returns 3 providers with default config", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 3);
+    const names = providers.map((p) => p.name);
+    assert.ok(names.includes("codex"), "should include codex");
+    assert.ok(names.includes("gemini"), "should include gemini");
+    assert.ok(names.includes("claude"), "should include claude");
+  });
+
+  it("excludes disabled provider (gemini)", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.gemini.enabled = false;
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 2);
+    const names = providers.map((p) => p.name);
+    assert.ok(!names.includes("gemini"), "gemini should be excluded");
+    assert.ok(names.includes("codex"), "codex should be included");
+    assert.ok(names.includes("claude"), "claude should be included");
+  });
+
+  it("throws R5-style error when fewer than 2 providers enabled", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.codex.enabled = false;
+    config.providers.gemini.enabled = false;
+    assert.throws(
+      () => buildProviders(config),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("At least 2 providers"), `got: ${err.message}`);
+        assert.ok(err.message.includes("claude"), `should list enabled: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when all providers disabled", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.codex.enabled = false;
+    config.providers.gemini.enabled = false;
+    config.providers.claude.enabled = false;
+    assert.throws(
+      () => buildProviders(config),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("none"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("each provider has detect and review methods", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    const providers = buildProviders(config);
+    for (const provider of providers) {
+      assert.equal(typeof provider.detect, "function", `${provider.name} should have detect`);
+      assert.equal(typeof provider.review, "function", `${provider.name} should have review`);
+    }
+  });
+
+  it("respects custom timeout in config", () => {
+    // We verify that providers are constructed — the timeout injection
+    // is tested in the individual provider test files (Unit 3).
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.timeout = 60;
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 3);
   });
 });
