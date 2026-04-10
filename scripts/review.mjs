@@ -17,6 +17,7 @@ import { matchFindings } from "./lib/matcher.mjs";
 import { generateReport } from "./lib/report.mjs";
 import { codexProvider } from "./lib/providers/codex.mjs";
 import { geminiProvider } from "./lib/providers/gemini.mjs";
+import { claudeProvider } from "./lib/providers/claude.mjs";
 
 // ─── Argument parser ─────────────────────────────────────────────────────────
 
@@ -186,7 +187,10 @@ function buildProviders() {
     Object.assign(geminiProvider, { name: "gemini" })
   );
 
-  return [codex, gemini];
+  // claudeProvider already has `name: "claude"` on the object.
+  const claude = /** @type {import('./lib/types.mjs').Provider & { name: string }} */ (claudeProvider);
+
+  return [codex, gemini, claude];
 }
 
 // ─── CLI entry point ──────────────────────────────────────────────────────────
