@@ -368,3 +368,220 @@ describe("DEFAULTS", () => {
     assert.ok(Object.isFrozen(DEFAULTS.providers));
   });
 });
+
+// ─── Prototype pollution defense ─────────────────────────────────────────────
+
+describe("loadConfig — prototype pollution defense", () => {
+  it("rejects __proto__ as a top-level key in user config", async () => {
+    // JSON.parse creates __proto__ as an own property (not via the setter),
+    // so we need to test the parse-time rejection via a raw JSON string.
+    const maliciousJson = '{"__proto__": {"polluted": true}}';
+    const readFileFn = makeReadFileFn({
+      ".devils-advocate/config.json": maliciousJson,
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("forbidden key"), `got: ${err.message}`);
+        assert.ok(err.message.includes("__proto__"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects __proto__ in nested provider config", async () => {
+    const maliciousJson = '{"providers": {"__proto__": {"enabled": false}}}';
+    const readFileFn = makeReadFileFn({
+      ".da.json": maliciousJson,
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("forbidden key"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects constructor as a config key", async () => {
+    const maliciousJson = '{"constructor": {"prototype": {}}}';
+    const readFileFn = makeReadFileFn({
+      ".da.json": maliciousJson,
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("forbidden key"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects prototype as a nested key", async () => {
+    const maliciousJson = '{"nested": {"prototype": {"enabled": false}}}';
+    const readFileFn = makeReadFileFn({
+      ".da.json": maliciousJson,
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("forbidden key"), `got: ${err.message}`);
+        assert.ok(err.message.includes("prototype"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("does not pollute Object.prototype after rejected config load", async () => {
+    const maliciousJson = '{"__proto__": {"polluted": "yes"}}';
+    const readFileFn = makeReadFileFn({
+      ".da.json": maliciousJson,
+    });
+
+    try {
+      await loadConfig({}, { readFileFn });
+    } catch {
+      // expected
+    }
+
+    // Verify Object.prototype was not polluted
+    const emptyObj = {};
+    assert.equal(
+      /** @type {Record<string, unknown>} */ (emptyObj).polluted,
+      undefined,
+      "Object.prototype should not be polluted"
+    );
+  });
+});
+
+// ─── Provider config shape validation ──────────────────────────────────────
+
+describe("loadConfig — provider config shape validation", () => {
+  it("rejects providers.codex = null", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { codex: null } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("providers.codex"), `got: ${err.message}`);
+        assert.ok(err.message.includes("must be an object"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects providers.codex = false", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { codex: false } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("providers.codex"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects providers.gemini = 'enabled'", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { gemini: "enabled" } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("providers.gemini"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects providers.claude = [] (array)", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { claude: [] } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("providers.claude"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects enabled as a string", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { codex: { enabled: "true" } } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("enabled"), `got: ${err.message}`);
+        assert.ok(err.message.includes("boolean"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects enabled as a number", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { codex: { enabled: 1 } } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("boolean"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("rejects claude.model as a number", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({ providers: { claude: { model: 42 } } }),
+    });
+
+    await assert.rejects(
+      loadConfig({}, { readFileFn }),
+      (err) => {
+        assert.ok(err instanceof ConfigError);
+        assert.ok(err.message.includes("model"), `got: ${err.message}`);
+        assert.ok(err.message.includes("string"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("accepts valid shape with both enabled and model", async () => {
+    const readFileFn = makeReadFileFn({
+      ".da.json": JSON.stringify({
+        providers: { claude: { enabled: true, model: "opus" } },
+      }),
+    });
+
+    const config = await loadConfig({}, { readFileFn });
+    assert.equal(config.providers.claude.enabled, true);
+    assert.equal(config.providers.claude.model, "opus");
+  });
+});

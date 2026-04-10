@@ -573,9 +573,9 @@ describe("buildClaudeProvider() — model injection", () => {
 // ─── timeoutMs injection ──────────────────────────────────────────────────────
 
 describe("buildClaudeProvider() — timeoutMs injection", () => {
-  it("buildClaudeProvider({ timeoutMs: 60000 }) → AbortController fires before long-running process", async () => {
-    // Inject a short timeoutMs and verify the review rejects well before the
-    // default 120s would fire, proving the injected value is used.
+  it("buildClaudeProvider({ timeoutMs }) → AbortController fires before long-running process", async () => {
+    // Use a 60ms timeout (not 60s) to keep the test fast. Verifies the injected
+    // value is honored — default is 120_000ms, so 60ms firing proves override.
     const SHORT_TIMEOUT_MS = 60;
 
     const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {

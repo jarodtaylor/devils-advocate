@@ -395,9 +395,9 @@ describe("codexProvider.review()", () => {
 // ─── timeoutMs factory injection ──────────────────────────────────────────────
 
 describe("createCodexProvider() — timeoutMs injection", () => {
-  it("createCodexProvider(spawn, { timeoutMs: 60000 }) → uses 60s timeout (factory-level default)", async () => {
-    // Build a provider with a short factory timeout and verify it fires before
-    // the process resolves (process has a long delay).
+  it("createCodexProvider(spawn, { timeoutMs }) → factory-level timeout fires before long-running process", async () => {
+    // Use a 60ms timeout (not 60s) to keep the test fast. The value is arbitrary
+    // — we only need it to fire before the spawned process resolves.
     const SHORT_TIMEOUT_MS = 60;
 
     const spawnFn = /** @type {any} */ ((_cmd, _args, spawnOpts) => {

@@ -84,8 +84,20 @@ function isPlainObject(val) {
 }
 
 /**
+ * Keys that are forbidden from appearing in config objects because merging them
+ * could trigger prototype pollution (the `__proto__` setter, or walking up the
+ * prototype chain via `constructor.prototype`).
+ */
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
  * Deep merge `overlay` onto `base`. Plain objects are merged key-by-key;
  * everything else (arrays, primitives) is leaf-replaced by the overlay value.
+ *
+ * Prototype pollution defense: forbidden keys (`__proto__`, `constructor`,
+ * `prototype`) are silently skipped. `readConfigFile` also checks for these
+ * keys at parse time and throws a ConfigError with attribution — this loop is
+ * the defense-in-depth backstop.
  *
  * @param {Record<string, unknown>} base
  * @param {Record<string, unknown>} overlay
@@ -94,6 +106,7 @@ function isPlainObject(val) {
 function deepMerge(base, overlay) {
   const result = Object.assign({}, base);
   for (const [key, overlayVal] of Object.entries(overlay)) {
+    if (FORBIDDEN_KEYS.has(key)) continue;
     const baseVal = result[key];
     if (isPlainObject(baseVal) && isPlainObject(overlayVal)) {
       result[key] = deepMerge(baseVal, overlayVal);
@@ -102,6 +115,32 @@ function deepMerge(base, overlay) {
     }
   }
   return result;
+}
+
+/**
+ * Recursively check an object for forbidden keys (prototype pollution vectors).
+ * Returns the first forbidden key path found, or null if clean.
+ *
+ * @param {unknown} obj
+ * @param {string} [path]
+ * @returns {string | null}
+ */
+function findForbiddenKey(obj, path = "") {
+  if (!isPlainObject(obj)) return null;
+  // Object.entries skips inherited properties, so we use Object.getOwnPropertyNames
+  // to catch __proto__ set as an own property via JSON.parse (JSON.parse creates
+  // __proto__ as a regular own property, not via the setter).
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (FORBIDDEN_KEYS.has(key)) {
+      return path ? `${path}.${key}` : key;
+    }
+    const nested = findForbiddenKey(
+      /** @type {Record<string, unknown>} */ (obj)[key],
+      path ? `${path}.${key}` : key
+    );
+    if (nested) return nested;
+  }
+  return null;
 }
 
 /**
@@ -153,6 +192,16 @@ async function readConfigFile(filePath, readFileFn) {
         `Config file must be a JSON object, got ${Array.isArray(parsed) ? "array" : typeof parsed}`,
         filePath,
         undefined
+      );
+    }
+    // Prototype pollution defense: reject __proto__, constructor, prototype
+    // at any nesting depth before the object enters the merge pipeline.
+    const forbidden = findForbiddenKey(parsed);
+    if (forbidden !== null) {
+      throw new ConfigError(
+        `Config file contains forbidden key "${forbidden}" (prototype pollution vector)`,
+        filePath,
+        forbidden
       );
     }
     return parsed;
@@ -214,12 +263,35 @@ function validateConfig(config, source) {
         );
       }
 
+      // Provider config must be a plain object. Rejects null, false, strings, arrays, etc.
+      if (!isPlainObject(providerConfig)) {
+        throw new ConfigError(
+          `Invalid providers.${name} in ${source}: must be an object, got ${providerConfig === null ? "null" : Array.isArray(providerConfig) ? "array" : typeof providerConfig}`,
+          source,
+          `providers.${name}`
+        );
+      }
+
+      // Validate enabled is boolean if present
+      if ("enabled" in providerConfig && typeof providerConfig.enabled !== "boolean") {
+        throw new ConfigError(
+          `Invalid providers.${name}.enabled in ${source}: must be a boolean, got ${typeof providerConfig.enabled}`,
+          source,
+          `providers.${name}.enabled`
+        );
+      }
+
+      // Validate model is string if present
+      if ("model" in providerConfig && typeof providerConfig.model !== "string") {
+        throw new ConfigError(
+          `Invalid providers.${name}.model in ${source}: must be a string, got ${typeof providerConfig.model}`,
+          source,
+          `providers.${name}.model`
+        );
+      }
+
       // Warn (not error) if model is set on a non-claude provider (R8)
-      if (
-        name !== "claude" &&
-        isPlainObject(providerConfig) &&
-        "model" in providerConfig
-      ) {
+      if (name !== "claude" && "model" in providerConfig) {
         process.stderr.write(
           `Warning: "model" field on provider "${name}" in ${source} is ignored. ` +
             `Model configuration is only supported for the "claude" provider in V1.1.\n`

@@ -12,7 +12,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseArgs, runReview, buildProviders } from "../scripts/review.mjs";
-import { DEFAULTS, ConfigError } from "../scripts/lib/config.mjs";
+import { DEFAULTS } from "../scripts/lib/config.mjs";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

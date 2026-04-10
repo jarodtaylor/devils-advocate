@@ -639,7 +639,9 @@ describe("geminiProvider.detect() — return shape", () => {
 // ─── timeoutMs injection ──────────────────────────────────────────────────────
 
 describe("buildGeminiProvider() — timeoutMs injection", () => {
-  it("buildGeminiProvider({ timeoutMs: 60000 }) → abort fires before long-running process", async () => {
+  it("buildGeminiProvider({ timeoutMs }) → abort fires before long-running process", async () => {
+    // Use a 60ms timeout (not 60s) to keep the test fast. The value is arbitrary
+    // — we only need it to fire before the spawned process resolves.
     const SHORT_TIMEOUT_MS = 60;
 
     // Process that never emits close — hangs until timeout fires
