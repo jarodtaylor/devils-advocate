@@ -17,4 +17,10 @@ Options:
   --files <paths...>    Limit review to specific files
   --verbose             Include raw provider output in the report
 
-$ARGUMENTS
+Run the Devil's Advocate review by executing the companion script:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/scripts/review.mjs $ARGUMENTS
+```
+
+Present the output to the user as the adversarial review report.
