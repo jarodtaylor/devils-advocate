@@ -1,51 +1,81 @@
 # Devil's Advocate
 
-Multi-model adversarial code review plugin for Claude Code. Sends diffs to external AI tools (Codex, Gemini CLI) in parallel, then synthesizes a structured disagreement report. Claude orchestrates — it never reviews.
+Multi-model adversarial code review plugin for Claude Code. Sends diffs to external AI tools in parallel, then synthesizes a structured disagreement report — highlighting where reviewers diverge, not flattening to consensus.
 
 ## Project State
 
-Pre-implementation. Requirements finalized at `docs/brainstorms/devils-advocate-v1-requirements.md`. Next step: `/ce:plan` for implementation planning.
+V1 complete and pushed to `main` (public repo: `jarodtaylor/devils-advocate`). 188 tests, 12 commits, 3 providers. First real adversarial review successfully completed.
+
+**Next:** V1.1 config system. Requirements finalized at `docs/brainstorms/config-system-requirements.md`. Ready for `/ce:plan`.
 
 ## Tech Stack
 
-- **Language:** TypeScript (Claude Code plugin)
+- **Language:** ESM JavaScript (`.mjs`) + TypeScript type-checking (`tsc --noEmit --checkJs`)
+- **No build step.** Contributors clone and go.
 - **Distribution:** Claude Code plugin (`/da:review` slash command)
-- **V1 Providers:** Codex CLI (`codex exec --json`), Gemini CLI (`gemini -p "..." -o json`)
+- **Testing:** `node --test` (Node.js built-in test runner)
 - **License:** MIT
+
+## Providers (V1)
+
+| Provider | CLI | Auth | Model Flag | Safety Flag |
+|----------|-----|------|-----------|-------------|
+| Codex | `codex exec --json --output-schema <schema>` | `codex login status` (exit 0) | None (uses CLI default) | N/A |
+| Gemini | `gemini -p "prompt" -o json --sandbox` | `~/.gemini/oauth_creds.json` + `expiry_date` | None verified | `--sandbox` |
+| Claude | `claude -p "prompt" --output-format json --model sonnet` | `command -v claude` (always authed in CC) | `--model sonnet` | `--no-input` |
+
+## Architecture
+
+```
+skills/review/SKILL.md          → /da:review entry point
+scripts/review.mjs              → CLI arg parsing + pipeline orchestration
+scripts/lib/config.mjs          → [V1.1] config file loading + merging
+scripts/lib/diff.mjs            → git diff with auto-detect + overrides
+scripts/lib/prompt.mjs          → adversarial prompt builder
+scripts/lib/providers/codex.mjs → Codex CLI adapter
+scripts/lib/providers/gemini.mjs→ Gemini CLI adapter
+scripts/lib/providers/claude.mjs→ Claude Code adapter
+scripts/lib/orchestrate.mjs     → parallel execution + R5 gates
+scripts/lib/validate.mjs        → R10a output trust boundary
+scripts/lib/matcher.mjs         → location-based finding matching
+scripts/lib/report.mjs          → disagreement report synthesis
+scripts/lib/types.mjs           → provider interface + finding schema
+schemas/finding.schema.json     → JSON schema for Codex --output-schema
+prompts/adversarial-review.md   → adversarial review prompt template
+```
 
 ## Architecture Constraints
 
-- **Claude never reviews.** Claude is the orchestrator and synthesizer. External tools do the reviewing. This is the core invariant.
-- **Subscription auth first.** Reuse existing CLI auth (Codex OAuth via `codex login status`, Gemini via `~/.gemini/oauth_creds.json`). No API keys in V1.
-- **Minimum 2 providers.** Hard fail if fewer than 2 active providers — the product is disagreement, not single-model review.
-- **Structured disagreement, not consensus.** Surface where models diverge. Don't flatten to agreement.
-- **Provider interface.** Typed adapter pattern. Adding a provider = implementing the interface, no orchestration changes.
-- **Uniform diff delivery.** Orchestrator pre-computes the diff and passes it as prompt context. Providers don't resolve git state.
-- **Output validation is the trust boundary.** Validate provider JSON before synthesis. Malformed output = provider failure.
+- **Claude never reviews.** Claude orchestrates and synthesizes. External tools review. Core invariant.
+- **Minimum 2 providers.** Hard fail (R5Error) if fewer than 2 active. Pre-flight AND post-validation checks.
+- **Structured disagreement, not consensus.** The disagreements are the signal.
+- **Uniform diff delivery.** Orchestrator pre-computes diff, passes as prompt context. Providers don't resolve git state.
+- **Output validation is the trust boundary (R10a).** Validate provider-parsed findings before synthesis. Malformed = provider failure.
+- **Prompt injection defense.** Diff/file content wrapped in XML delimiter tags (`<diff>`, `<files>`).
 
-## CLI Reference
+## Known Issues / Decisions
+
+- **Gemini uses `--sandbox`** (not `--yolo` or `--approval-mode plan`). `--yolo` auto-approves tool execution (dangerous). `--approval-mode plan` forces heavier pro model that 429s. `--sandbox` restricts execution environment safely.
+- **Schema divergence is intentional.** `schemas/finding.schema.json` requires all fields including confidence (for Codex `--output-schema` OpenAI compatibility). `scripts/lib/types.mjs` validator treats confidence as optional (for Gemini prompt-only enforcement). Both are correct for their purpose.
+- **Codex JSONL parsing** handles `item.completed` events with text at `event.item.text` (Pattern 2 in `parseCodexJsonl`).
+
+## Commands
 
 ```bash
-# Codex headless
-codex exec --json "prompt"        # JSONL event stream to stdout
-codex exec -o result.txt "prompt" # final message to file
-codex login status                # exit 0 = authenticated
-
-# Gemini headless
-gemini -p "prompt" -o json        # JSON envelope: {session_id, response, stats}
-# No auth-check command — read ~/.gemini/oauth_creds.json + expiry_date field
+npm run check    # tsc --noEmit type checking
+npm test         # node --test (188 tests)
 ```
-
-## Key Reference Repos
-
-- `openai/codex-plugin-cc` — Codex plugin for Claude Code (OpenAI's reference, JS ESM)
-- `nyldn/claude-octopus` — Multi-model orchestrator (85% Bash — learn from its mistakes)
-- `AltimateAI/claude-consensus` — Multi-model consensus via OpenRouter (API key approach)
 
 ## Development Rules
 
-- Feature branches only. Never commit to main. Branch naming: `<type>/<short-description>`.
 - Read existing code before modifying. Follow established patterns.
 - Every change needs a clear "why."
-- Verify before marking complete — run tests, check types, demonstrate correctness.
-- Use `find-docs` skill for library documentation. Don't rely on training data for API signatures.
+- Verify before marking complete — run tests, check types.
+- Use `find-docs` skill for library documentation.
+- Provider adapters use dependency injection factories (`createCodexProvider(spawnFn)`, `buildGeminiProvider({spawnFn})`, `buildClaudeProvider({spawnFn})`) for testability.
+
+## Planning Documents
+
+- `docs/brainstorms/devils-advocate-v1-requirements.md` — V1 requirements (complete)
+- `docs/plans/2026-04-10-001-feat-adversarial-review-plugin-plan.md` — V1 implementation plan (complete)
+- `docs/brainstorms/config-system-requirements.md` — V1.1 config system requirements (ready for `/ce:plan`)
