@@ -368,7 +368,7 @@ describe("geminiProvider.review() — happy path", () => {
     assert.equal(reviewCall[pIdx + 1], "my test prompt", "prompt should follow -p");
   });
 
-  it("passes -o json and --approval-mode plan to gemini CLI", async () => {
+  it("passes -o json and --yolo to gemini CLI for headless execution", async () => {
     /** @type {string[][]} */
     const spawnCalls = [];
     const envelopeStr = makeEnvelope([]);
@@ -385,8 +385,7 @@ describe("geminiProvider.review() — happy path", () => {
     const reviewCall = spawnCalls[spawnCalls.length - 1];
     assert.ok(reviewCall.includes("-o"), "should include -o flag");
     assert.ok(reviewCall.includes("json"), "should include json output format");
-    assert.ok(reviewCall.includes("--approval-mode"), "should include --approval-mode");
-    assert.ok(reviewCall.includes("plan"), "should use plan approval mode");
+    assert.ok(reviewCall.includes("--yolo"), "should include --yolo for headless auto-approval");
   });
 });
 

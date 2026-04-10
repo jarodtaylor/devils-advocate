@@ -95,7 +95,12 @@ function mockProvider(opts = {}) {
       if (reviewDelay > 0) {
         await new Promise((res) => setTimeout(res, reviewDelay));
       }
-      return { findings: [], raw: reviewRaw };
+      // Parse findings from reviewRaw to simulate what real providers do.
+      // Real providers throw when CLI output is malformed — simulate that.
+      let findings = [];
+      const parsed = JSON.parse(reviewRaw);
+      findings = parsed.findings ?? [];
+      return { findings, raw: reviewRaw };
     },
   };
 }
@@ -269,9 +274,9 @@ describe("orchestrate — R5 pre-flight failures", () => {
 // ─── orchestrate.mjs — post-validation R5 failures ───────────────────────────
 
 describe("orchestrate — post-validation R5 failures", () => {
-  it("both providers return malformed JSON → post-validation R5 failure", async () => {
-    const p1 = mockProvider({ name: "bad1", reviewRaw: "this is not json" });
-    const p2 = mockProvider({ name: "bad2", reviewRaw: "{broken" });
+  it("both providers throw during review → post-validation R5 failure", async () => {
+    const p1 = mockProvider({ name: "bad1", reviewError: new Error("Codex returned malformed JSON") });
+    const p2 = mockProvider({ name: "bad2", reviewError: new Error("Gemini returned malformed JSON") });
 
     await assert.rejects(
       () => orchestrate(mockDiffResult(), [p1, p2]),
@@ -279,16 +284,16 @@ describe("orchestrate — post-validation R5 failures", () => {
         assert.ok(err instanceof R5Error);
         assert.ok(err.message.includes("R5 post-validation failed"));
         const statuses = /** @type {R5Error} */ (err).providerStatuses;
-        assert.ok(statuses["bad1"].reason.includes("malformed output"));
-        assert.ok(statuses["bad2"].reason.includes("malformed output"));
+        assert.ok(statuses["bad1"].reason.includes("runtime error"));
+        assert.ok(statuses["bad2"].reason.includes("runtime error"));
         return true;
       }
     );
   });
 
-  it("one provider returns malformed JSON, one is valid → post-validation R5 failure", async () => {
+  it("one provider throws, one is valid → post-validation R5 failure", async () => {
     const p1 = mockProvider({ name: "good", reviewRaw: validRaw() });
-    const p2 = mockProvider({ name: "bad", reviewRaw: "not json" });
+    const p2 = mockProvider({ name: "bad", reviewError: new Error("parse failed") });
 
     await assert.rejects(
       () => orchestrate(mockDiffResult(), [p1, p2]),
@@ -301,13 +306,13 @@ describe("orchestrate — post-validation R5 failures", () => {
     );
   });
 
-  it("provider passes pre-flight but fails validation → post-validation path triggered", async () => {
-    // The pre-flight succeeds (both installed+authenticated).
-    // But p2 returns JSON that fails schema validation (extra property).
-    const badRaw = JSON.stringify({ findings: [], unexpectedProp: true });
-
+  it("provider passes pre-flight but returns invalid findings → post-validation path triggered", async () => {
+    // Pre-flight succeeds (both installed+authenticated).
+    // But p2's review() returns findings that fail R10a re-validation.
     const p1 = mockProvider({ name: "ok", reviewRaw: validRaw() });
-    const p2 = mockProvider({ name: "schemafail", reviewRaw: badRaw });
+    // This provider returns findings with invalid severity — passes JSON parse but fails schema
+    const badFindings = [{ ...validFinding(), severity: "CRITICAL" }];
+    const p2 = mockProvider({ name: "schemafail", reviewRaw: JSON.stringify({ findings: badFindings }) });
 
     await assert.rejects(
       () => orchestrate(mockDiffResult(), [p1, p2]),

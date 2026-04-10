@@ -123,12 +123,17 @@ function parseCodexJsonl(stdout) {
       }
     }
 
-    // Pattern 2: delta or simple message events with a top-level text field
+    // Pattern 2: item.completed with text nested under item
+    if (event.item && typeof event.item.text === "string") {
+      candidates.push(event.item.text);
+    }
+
+    // Pattern 3: delta or simple message events with a top-level text field
     if (typeof event.text === "string") {
       candidates.push(event.text);
     }
 
-    // Pattern 3: message with a top-level content array
+    // Pattern 4: message with a top-level content array
     if (Array.isArray(event.content)) {
       for (const c of event.content) {
         if (typeof c.text === "string") {

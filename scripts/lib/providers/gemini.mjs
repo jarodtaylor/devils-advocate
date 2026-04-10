@@ -121,13 +121,13 @@ async function runGemini(renderedPrompt, signal, spawnFn) {
       tempFile = join(tmpDir, "prompt.txt");
       await writeFile(tempFile, renderedPrompt, "utf8");
       // Pipe the file as stdin; use `-p -` to read from stdin
-      args = ["-p", "-", "-o", "json", "--approval-mode", "plan"];
+      args = ["-p", "-", "-o", "json", "--yolo"];
       spawnOpts = {
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
       };
     } else {
-      args = ["-p", renderedPrompt, "-o", "json", "--approval-mode", "plan"];
+      args = ["-p", renderedPrompt, "-o", "json", "--yolo"];
       spawnOpts = {
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],

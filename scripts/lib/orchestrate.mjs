@@ -141,8 +141,10 @@ export async function orchestrate(diffResult, providers, options = {}) {
         .review(diffResult.diffText, diffResult.files, prompt)
         .then((result) => {
           clearTimeout(timer);
-          // Providers return {findings, raw} — we want the raw string for R10a validation
-          resolve(result.raw);
+          // Providers return {findings, raw} — providers already parse and validate
+          // their own CLI output format (JSONL for Codex, JSON envelope for Gemini).
+          // We pass through the full result for R10a re-validation of the findings.
+          resolve(result);
         })
         .catch((err) => {
           clearTimeout(timer);
@@ -169,11 +171,15 @@ export async function orchestrate(diffResult, providers, options = {}) {
     const name = provider.name;
 
     if (settled.status === "fulfilled") {
-      const raw = settled.value;
+      const providerResult = settled.value;
+      // Providers already parse their CLI-specific format (JSONL for Codex,
+      // JSON envelope for Gemini) and return normalized findings. R10a
+      // re-validates the findings array as a trust boundary.
+      const raw = JSON.stringify({ findings: providerResult.findings });
       const validation = validateProviderOutput(raw);
 
       if (validation.valid && validation.findings !== null) {
-        results.set(name, { findings: validation.findings, raw });
+        results.set(name, { findings: validation.findings, raw: providerResult.raw });
       } else {
         failures.set(name, {
           reason: "malformed output",

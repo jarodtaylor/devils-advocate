@@ -18,7 +18,8 @@
           "rationale",
           "file",
           "lineStart",
-          "lineEnd"
+          "lineEnd",
+          "confidence"
         ],
         "additionalProperties": false,
         "properties": {
@@ -29,23 +30,19 @@
           },
           "title": {
             "type": "string",
-            "minLength": 1,
-            "description": "Short one-line title for the finding."
+                        "description": "Short one-line title for the finding."
           },
           "description": {
             "type": "string",
-            "minLength": 1,
-            "description": "What can go wrong and why the code is vulnerable."
+                        "description": "What can go wrong and why the code is vulnerable."
           },
           "rationale": {
             "type": "string",
-            "minLength": 1,
-            "description": "Concrete evidence from the diff or source code supporting this finding."
+                        "description": "Concrete evidence from the diff or source code supporting this finding."
           },
           "file": {
             "type": "string",
-            "minLength": 1,
-            "description": "File path relative to repo root."
+                        "description": "File path relative to repo root."
           },
           "lineStart": {
             "type": "integer",
