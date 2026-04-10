@@ -1,0 +1,57 @@
+name: Claude Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+# Cancel stale runs when new pushes land
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip draft PRs unless explicitly marked ready
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            REPO: $REPO
+            PR NUMBER: $PR_NUMBER
+
+            This repo is Devil's Advocate — a Claude Code plugin that runs
+            adversarial code review via multiple AI CLIs (Codex, Gemini, Claude).
+            The codebase is ESM JavaScript (.mjs files), zero runtime dependencies,
+            uses `node --test` for testing. See CLAUDE.md for full context.
+
+            Review this pull request focusing on:
+            - Correctness and logic errors
+            - Security issues (especially around file I/O, child_process, JSON parsing)
+            - Provider adapter integrity (codex/gemini/claude .mjs files)
+            - Test coverage gaps — is new behavior actually tested?
+            - Whether changes respect the project's architectural invariants
+              (Claude never reviews — orchestrates only; min 2 providers; R10a trust boundary)
+
+            Use `mcp__github_inline_comment__create_inline_comment` (with confirmed: true)
+            for specific code-level issues. Use `gh pr comment` for top-level observations.
+            Only post GitHub comments — don't submit review text as messages.
+
+            If the PR looks good, post a brief approval comment and stop.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(npm test),Bash(npm run check)"
