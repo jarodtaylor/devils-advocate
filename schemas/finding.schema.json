@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ProviderReviewResponse",
-  "description": "Structured output contract for adversarial code review providers.",
+  "description": "Structured output contract for adversarial code review providers. NOTE: This schema is used by Codex --output-schema which requires all properties in 'required' and does not support minLength. The validator in types.mjs enforces stricter rules (non-empty strings, optional confidence) as the R10a trust boundary.",
   "type": "object",
   "required": ["findings"],
   "additionalProperties": false,

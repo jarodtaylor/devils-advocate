@@ -14,7 +14,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { writeFile, unlink, mkdtemp } from "node:fs/promises";
+import { writeFile, unlink, mkdtemp, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { buildPrompt } from "../prompt.mjs";
@@ -121,13 +121,13 @@ async function runGemini(renderedPrompt, signal, spawnFn) {
       tempFile = join(tmpDir, "prompt.txt");
       await writeFile(tempFile, renderedPrompt, "utf8");
       // Pipe the file as stdin; use `-p -` to read from stdin
-      args = ["-p", "-", "-o", "json", "--yolo"];
+      args = ["-p", "-", "-o", "json", "--sandbox"];
       spawnOpts = {
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
       };
     } else {
-      args = ["-p", renderedPrompt, "-o", "json", "--yolo"];
+      args = ["-p", renderedPrompt, "-o", "json", "--sandbox"];
       spawnOpts = {
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
@@ -199,9 +199,12 @@ async function runGemini(renderedPrompt, signal, spawnFn) {
     });
   } finally {
     if (tempFile) {
-      unlink(tempFile).catch(() => {
-        // best-effort cleanup
-      });
+      const dir = join(tempFile, "..");
+      unlink(tempFile)
+        .then(() => rmdir(dir))
+        .catch(() => {
+          // best-effort cleanup
+        });
     }
   }
 }
