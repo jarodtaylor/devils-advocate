@@ -127,7 +127,7 @@ export async function orchestrate(diffResult, providers, options = {}) {
    * Wrap a provider review() call with an AbortController timeout.
    *
    * @param {import('./types.mjs').Provider & { name: string }} provider
-   * @returns {Promise<string>} Raw string output from the provider.
+   * @returns {Promise<import('./types.mjs').ReviewResult>} Parsed result from the provider.
    */
   function runWithTimeout(provider) {
     return new Promise((resolve, reject) => {

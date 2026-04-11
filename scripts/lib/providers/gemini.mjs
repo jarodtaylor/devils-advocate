@@ -136,7 +136,10 @@ async function runGemini(renderedPrompt, signal, spawnFn, timeoutMs) {
     }
 
     return await new Promise((resolve, reject) => {
-      const proc = spawnFn("gemini", args, spawnOpts);
+      // stdout/stderr are always piped (never null) given the spawnOpts above.
+      const proc = /** @type {import('node:child_process').ChildProcessByStdio<import('node:stream').Writable, import('node:stream').Readable, import('node:stream').Readable>} */ (
+        spawnFn("gemini", args, spawnOpts)
+      );
 
       /** @type {Buffer[]} */
       const stdoutChunks = [];

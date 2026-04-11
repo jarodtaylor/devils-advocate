@@ -19,22 +19,25 @@ import { loadConfig, DEFAULTS, ConfigError } from "../scripts/lib/config.mjs";
  * @param {Record<string, string | Error>} pathMap
  *   Keys are path substrings to match (we check via includes).
  *   Values are either the raw file content (string) or an Error to throw.
- * @returns {(path: string, encoding: string) => Promise<string>}
+ * @returns {typeof import('node:fs/promises').readFile}
  */
 function makeReadFileFn(pathMap = {}) {
-  return async (path) => {
+  /** @type {any} */
+  const fn = async (/** @type {unknown} */ path) => {
     for (const [key, val] of Object.entries(pathMap)) {
-      if (path.includes(key)) {
+      if (String(path).includes(key)) {
         if (val instanceof Error) throw val;
         return val;
       }
     }
     // Default: file not found
-    const err = new Error(`ENOENT: no such file or directory, open '${path}'`);
-    // @ts-ignore
+    const err = /** @type {NodeJS.ErrnoException} */ (
+      new Error(`ENOENT: no such file or directory, open '${String(path)}'`)
+    );
     err.code = "ENOENT";
     throw err;
   };
+  return fn;
 }
 
 /**
@@ -294,11 +297,12 @@ describe("loadConfig — error paths", () => {
 
 describe("loadConfig — warning paths", () => {
   it("model field on codex provider → warning to stderr, config still loads", async () => {
+    /** @type {string[]} */
     const stderrWrites = [];
     const origWrite = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (chunk, ...rest) => {
-      stderrWrites.push(typeof chunk === "string" ? chunk : chunk.toString());
-      return origWrite(chunk, ...rest);
+    /** @type {any} */ (process.stderr).write = (/** @type {string | Uint8Array} */ chunk) => {
+      stderrWrites.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+      return origWrite(chunk);
     };
 
     try {
@@ -327,11 +331,12 @@ describe("loadConfig — warning paths", () => {
   });
 
   it("model field on gemini provider → warning to stderr, not an error", async () => {
+    /** @type {string[]} */
     const stderrWrites = [];
     const origWrite = process.stderr.write.bind(process.stderr);
-    process.stderr.write = (chunk, ...rest) => {
-      stderrWrites.push(typeof chunk === "string" ? chunk : chunk.toString());
-      return origWrite(chunk, ...rest);
+    /** @type {any} */ (process.stderr).write = (/** @type {string | Uint8Array} */ chunk) => {
+      stderrWrites.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString());
+      return origWrite(chunk);
     };
 
     try {

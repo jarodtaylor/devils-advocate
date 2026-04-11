@@ -77,7 +77,10 @@ function runClaude(renderedPrompt, signal, spawnFn, model, timeoutMs) {
   };
 
   return new Promise((resolve, reject) => {
-    const proc = spawnFn("claude", args, spawnOpts);
+    // stdio is always ['pipe','pipe','pipe'] so stdout/stderr are never null.
+    const proc = /** @type {import('node:child_process').ChildProcessByStdio<import('node:stream').Writable, import('node:stream').Readable, import('node:stream').Readable>} */ (
+      spawnFn("claude", args, spawnOpts)
+    );
 
     /** @type {Buffer[]} */
     const stdoutChunks = [];

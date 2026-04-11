@@ -15,6 +15,10 @@ import { createCodexProvider } from "../../scripts/lib/providers/codex.mjs";
 // ─── Mock ChildProcess Factory ────────────────────────────────────────────────
 
 /**
+ * @typedef {{ stdout: EventEmitter, stderr: EventEmitter, stdin: Writable } & EventEmitter} MockProc
+ */
+
+/**
  * Create a minimal mock ChildProcess-like object.
  * stdout and stderr are EventEmitters. stdin is a writable stub that records
  * all data written to it.
@@ -26,7 +30,7 @@ import { createCodexProvider } from "../../scripts/lib/providers/codex.mjs";
  * @param {string}   [opts.stderrData]    Data emitted on stderr
  * @param {number}   [opts.exitCode]      Exit code for the close event (default 0)
  * @param {number}   [opts.exitDelay]     Delay in ms before emitting close (for timeout tests)
- * @returns {{ proc: object, triggerExit: () => void, stdinChunks: string[] }}
+ * @returns {{ proc: MockProc, triggerExit: () => void, stdinChunks: string[] }}
  */
 function makeMockProc(opts = {}) {
   const { stdoutLines = [], stderrData = "", exitCode = 0, exitDelay = 0 } = opts;
@@ -43,7 +47,7 @@ function makeMockProc(opts = {}) {
     },
   });
 
-  const proc = Object.assign(new EventEmitter(), { stdout, stderr, stdin });
+  const proc = /** @type {MockProc} */ (Object.assign(new EventEmitter(), { stdout, stderr, stdin }));
 
   function triggerExit() {
     for (const line of stdoutLines) {
@@ -69,16 +73,18 @@ function makeMockProc(opts = {}) {
  * setImmediate so the caller's listeners are attached before data flows.
  *
  * @param {Array<{ proc: object, triggerExit: () => void }>} sequence
- * @returns {Function}
+ * @returns {typeof import('node:child_process').spawn}
  */
 function makeSpawnSeq(sequence) {
   let idx = 0;
-  return function mockSpawn(_cmd, _args, _opts) {
+  /** @type {any} */
+  const fn = function mockSpawn(/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) {
     const entry = sequence[idx++];
     if (!entry) throw new Error(`mockSpawn called more times than expected (call ${idx})`);
     setImmediate(entry.triggerExit);
     return entry.proc;
   };
+  return fn;
 }
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -250,7 +256,7 @@ describe("codexProvider.review()", () => {
     // The mock proc never emits close on its own; the AbortController fires first.
     const { proc } = makeMockProc({ exitCode: 0, exitDelay: 60_000 });
 
-    const spawnFn = /** @type {any} */ ((_cmd, _args, spawnOpts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {any} */ spawnOpts) => {
       // Wire up AbortController signal to emit ABORT_ERR on the proc
       if (spawnOpts && spawnOpts.signal) {
         spawnOpts.signal.addEventListener("abort", () => {
@@ -268,7 +274,7 @@ describe("codexProvider.review()", () => {
     const SHORT_TIMEOUT_MS = 50;
 
     await assert.rejects(
-      () => provider.review("diff", [], "", SHORT_TIMEOUT_MS),
+      () => /** @type {any} */ (provider).review("diff", [], "", SHORT_TIMEOUT_MS),
       (err) => {
         assert.ok(err instanceof Error);
         assert.ok(
@@ -288,15 +294,15 @@ describe("codexProvider.review()", () => {
     /** @type {string[]} */
     let capturedStdin = [];
 
-    const spawnFn = /** @type {any} */ ((cmd, args) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args) => {
       capturedArgs = args;
       const { proc, triggerExit } = makeMockProc({ stdoutLines: jsonlLines, exitCode: 0 });
 
       // Intercept stdin writes to capture prompt delivery
       const origWrite = proc.stdin.write.bind(proc.stdin);
-      proc.stdin.write = (data, ...rest) => {
+      proc.stdin.write = (/** @type {string | Buffer} */ data) => {
         capturedStdin.push(typeof data === "string" ? data : data.toString());
-        return origWrite(data, ...rest);
+        return origWrite(data);
       };
 
       setImmediate(triggerExit);
@@ -376,7 +382,7 @@ describe("codexProvider.review()", () => {
     /** @type {string[]} */
     let capturedArgs = [];
 
-    const spawnFn = /** @type {any} */ ((_cmd, args) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ args) => {
       capturedArgs = args;
       const { proc, triggerExit } = makeMockProc({ stdoutLines: jsonlLines, exitCode: 0 });
       setImmediate(triggerExit);
@@ -400,7 +406,7 @@ describe("createCodexProvider() — timeoutMs injection", () => {
     // — we only need it to fire before the spawned process resolves.
     const SHORT_TIMEOUT_MS = 60;
 
-    const spawnFn = /** @type {any} */ ((_cmd, _args, spawnOpts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {any} */ spawnOpts) => {
       const { proc } = makeMockProc({ exitCode: 0, exitDelay: 60_000 });
 
       // Wire abort signal to emit ABORT_ERR so makeSpawnCollect rejects
@@ -440,7 +446,7 @@ describe("createCodexProvider() — timeoutMs injection", () => {
     // no explicit timeoutMs arg is passed.
     const SHORT_TIMEOUT_MS = 60;
 
-    const spawnFn = /** @type {any} */ ((_cmd, _args, spawnOpts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {any} */ spawnOpts) => {
       const { proc } = makeMockProc({ exitCode: 0, exitDelay: 60_000 });
       if (spawnOpts && spawnOpts.signal) {
         spawnOpts.signal.addEventListener("abort", () => {
@@ -478,7 +484,7 @@ describe("createCodexProvider() — timeoutMs injection", () => {
     const FACTORY_TIMEOUT_MS = 10_000; // 10s — longer than test duration
     const CALL_TIMEOUT_MS = 60;        // 60ms — short enough to fire
 
-    const spawnFn = /** @type {any} */ ((_cmd, _args, spawnOpts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {any} */ spawnOpts) => {
       const { proc } = makeMockProc({ exitCode: 0, exitDelay: 60_000 });
       if (spawnOpts && spawnOpts.signal) {
         spawnOpts.signal.addEventListener("abort", () => {
@@ -495,7 +501,7 @@ describe("createCodexProvider() — timeoutMs injection", () => {
 
     const start = Date.now();
     await assert.rejects(
-      () => provider.review("diff", [], "", CALL_TIMEOUT_MS),
+      () => /** @type {any} */ (provider).review("diff", [], "", CALL_TIMEOUT_MS),
       (err) => {
         assert.ok(err instanceof Error);
         const elapsed = Date.now() - start;
