@@ -10,6 +10,12 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore(deps)"
+    ignore:
+      # TypeScript major bumps often precede @types/* catch-up releases.
+      # Our checkJs + JSDoc workflow works fine on the current 5.x line.
+      # Remove this ignore when we explicitly decide to upgrade to TS 6+.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
