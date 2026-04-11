@@ -24,13 +24,13 @@ import { loadConfig, ConfigError } from "./lib/config.mjs";
 
 /**
  * @typedef {Object} ReviewArgs
- * @property {string} [branch]    - Diff against this branch via merge-base.
- * @property {string} [worktree]  - Run git commands in this directory.
- * @property {string} [diff]      - Explicit diff range (e.g. "main..HEAD").
- * @property {string[]} [files]   - Limit diff to these file paths.
- * @property {boolean} verbose    - Include raw provider output in the report.
- * @property {number} [timeout]   - Per-provider timeout in seconds.
- * @property {string[]} [disable] - Provider names to skip.
+ * @property {string} [branch]   - Diff against this branch via merge-base.
+ * @property {string} [worktree] - Run git commands in this directory.
+ * @property {string} [diff]     - Explicit diff range (e.g. "main..HEAD").
+ * @property {string[]} [files]  - Limit diff to these file paths.
+ * @property {boolean} verbose   - Include raw provider output in the report.
+ * @property {number} [timeout]  - Per-provider timeout in seconds.
+ * @property {string[]} disable  - Provider names to skip. Always an array (possibly empty).
  */
 
 /**
@@ -112,7 +112,9 @@ export function parseArgs(argv) {
         if (raw === undefined || raw.startsWith("--")) {
           throw new Error(`Flag "--timeout" requires a value.`);
         }
-        const value = parseFloat(raw);
+        // Use Number() not parseFloat() — parseFloat("60abc") silently returns 60,
+        // while Number("60abc") correctly returns NaN.
+        const value = Number(raw);
         if (isNaN(value)) {
           throw new Error(`Flag "--timeout" requires a numeric value, got "${raw}".`);
         }
@@ -136,7 +138,7 @@ export function parseArgs(argv) {
         if (names.length === 0) {
           throw new Error(`Flag "--disable" requires at least one provider name.`);
         }
-        args.disable = (args.disable ?? []).concat(names);
+        args.disable = args.disable.concat(names);
         break;
       }
 

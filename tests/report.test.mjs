@@ -339,6 +339,39 @@ describe("generateReport — config header", () => {
     assert.ok(!report.includes("**Disabled:**"), `should not have disabled. got:\n${report}`);
   });
 
+  it("renders config header on zero-findings runs (regression: early-return bypass)", () => {
+    // Previously, generateReport's early-return for `totalFindings === 0 &&
+    // no failures` bypassed the config header entirely. A user disabling a
+    // provider and getting a clean review would see "No issues found" with
+    // no indication their config was applied. This test guards that path.
+    const matchResult = matchFindings(makeResults({ codex: [], claude: [] }));
+    const config = defaultConfig({
+      providers: {
+        codex: { enabled: true },
+        gemini: { enabled: false },
+        claude: { enabled: true, model: "opus" },
+      },
+      timeout: 60,
+    });
+    const report = generateReport(matchResult, noFailures, { config });
+
+    assert.ok(report.includes("No issues found"), `should show clean-run message. got:\n${report}`);
+    assert.ok(report.includes("**Timeout:** 60s"), `should show config timeout. got:\n${report}`);
+    assert.ok(report.includes("claude (opus)"), `should show claude model. got:\n${report}`);
+    assert.ok(report.includes("**Disabled:** gemini"), `should show disabled list. got:\n${report}`);
+  });
+
+  it("clean run without config still uses the terse early-return (backward compat)", () => {
+    // When no config is passed, the early-return should stay terse — no
+    // config header, just the "No issues found" message.
+    const matchResult = matchFindings(makeResults({ codex: [], gemini: [] }));
+    const report = generateReport(matchResult, noFailures);
+
+    assert.ok(report.includes("No issues found"), `got:\n${report}`);
+    assert.ok(!report.includes("**Timeout:**"), `should not have config header. got:\n${report}`);
+    assert.ok(!report.includes("**Providers:**"), `should not have Providers label. got:\n${report}`);
+  });
+
   it("multiple disabled providers listed", () => {
     const fa = makeFinding();
     const matchResult = matchFindings(makeResults({ claude: [fa] }));

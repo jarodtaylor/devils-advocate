@@ -283,7 +283,15 @@ export function generateReport(matchResult, providerFailures, options = {}) {
 
   // No findings at all from any provider.
   if (totalFindings === 0 && providerFailures.size === 0) {
-    return ["## Devil's Advocate Review", "", "No issues found by any provider."].join("\n");
+    const cleanParts = ["## Devil's Advocate Review", ""];
+    // R15: config header must render even on clean runs so users see
+    // which providers actually ran and with what settings.
+    if (options.config) {
+      cleanParts.push(renderConfigHeader(options.config, providerNames));
+      cleanParts.push("");
+    }
+    cleanParts.push("No issues found by any provider.");
+    return cleanParts.join("\n");
   }
 
   const parts = ["## Devil's Advocate Review", ""];

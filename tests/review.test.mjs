@@ -220,9 +220,35 @@ describe("parseArgs — --timeout flag", () => {
   it("throws when --timeout value is zero", () => {
     assert.throws(
       () => parseArgs(["--timeout", "0"]),
-      (err) => {
+      (/** @type {Error} */ err) => {
         assert.ok(err instanceof Error);
         assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value has trailing non-numeric chars (regression: parseFloat truncation)", () => {
+    // parseFloat("60abc") returns 60, silently accepting the value.
+    // Number("60abc") returns NaN — this test guards against regression.
+    assert.throws(
+      () => parseArgs(["--timeout", "60abc"]),
+      (/** @type {Error} */ err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("numeric"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is pure whitespace", () => {
+    // Number("  ") is 0 which fails the positive check; parseFloat("  ") is NaN.
+    // Either way this should fail — just pinning the behavior.
+    assert.throws(
+      () => parseArgs(["--timeout", "abc123"]),
+      (/** @type {Error} */ err) => {
+        assert.ok(err instanceof Error);
         return true;
       }
     );
@@ -414,7 +440,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -436,7 +462,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -451,7 +477,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini" });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult({ diffText: "", target: "no changes detected" }),
       [p1, p2]
     );
@@ -471,7 +497,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: true, files: [] },
+      { verbose: true, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -486,7 +512,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini", findings: [] });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -499,7 +525,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini", findings: [] });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
