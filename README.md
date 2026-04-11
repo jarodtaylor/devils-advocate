@@ -234,6 +234,10 @@ All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md
 
 **Please do not file public issues for security vulnerabilities.** Report them privately via [GitHub Security Advisories](https://github.com/jarodtaylor/devils-advocate/security/advisories/new). See [SECURITY.md](SECURITY.md) for the full policy, including what's in and out of scope.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes. This project follows [Semantic Versioning](https://semver.org/) — pre-1.0 releases may include breaking changes in minor bumps, as is convention for 0.x.
+
 ## License
 
 MIT
