@@ -294,7 +294,8 @@ function validateConfig(config, source) {
       if (name !== "claude" && "model" in providerConfig) {
         process.stderr.write(
           `Warning: "model" field on provider "${name}" in ${source} is ignored. ` +
-            `Model configuration is only supported for the "claude" provider in V1.1.\n`
+            `Currently only the "claude" provider supports configurable model selection — ` +
+            `Codex and Gemini use their CLI's default model.\n`
         );
       }
     }

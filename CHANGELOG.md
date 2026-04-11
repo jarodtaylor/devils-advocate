@@ -9,6 +9,21 @@ Pre-1.0 versions may include breaking changes in minor bumps, as is convention f
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-11
+
+Documentation and messaging clarity patch. No behavior changes.
+
+### Changed
+
+- **Clarified model-selection wording** across the README, CHANGELOG, and the stderr warning in `scripts/lib/config.mjs`. The previous phrasing — "Model selection is Claude-only in V1.1" — was ambiguous and could be misread as "only Claude performs reviews." All three providers (Codex, Gemini, Claude) review every invocation. The limitation is that only Claude supports configurable model selection (`sonnet`, `opus`, `haiku`) via `providers.claude.model`; Codex and Gemini use their CLI's default model.
+- Replaced remaining `V1.1` internal shorthand with the actual release version `v0.1.0` in user-facing text.
+
+### Added
+
+- **Language & Build section in README** — prominently documents that this project is ESM JavaScript with JSDoc type annotations, not TypeScript, with the full rationale (Node 18+ compatibility, no build step, source is the shipped artifact). Contributors who open the repo expecting `.ts` files now have a clear explanation and pointer to JSDoc type syntax.
+- **Expanded Tech Stack section in CONTRIBUTING.md** — adds a "Why JavaScript + JSDoc and not TypeScript?" subsection covering the same rationale for contributors browsing the contributing guide.
+- **Updated CLAUDE.md Language section** — marks the language choice as "Important — not TypeScript" and explains the decision for future Claude Code sessions working on this project.
+
 ## [0.1.0] — 2026-04-10
 
 First public release. This version establishes the full adversarial review
@@ -52,7 +67,7 @@ pipeline with three providers and a layered configuration system.
 
 #### Provider-specific features
 
-- **Claude model selection** — configurable via `providers.claude.model` in config file. Supports `sonnet`, `opus`, `haiku`. (Codex and Gemini model selection deferred to a future release.)
+- **Claude model selection** — configurable via `providers.claude.model` in config file. Supports `sonnet`, `opus`, `haiku`. Codex and Gemini review every invocation but use their CLI's default model — configurable model selection for those two providers is deferred to a future release.
 - **Per-provider timeout injection** — `timeoutMs` flows through all three provider factories, overriding internal `DEFAULT_TIMEOUT_MS = 120_000`. Without this, providers would self-terminate at 120s regardless of the configured timeout.
 - **Model-on-non-Claude config** — stderr warning rather than hard error (the field is ignored with a clear diagnostic)
 
@@ -78,11 +93,12 @@ pipeline with three providers and a layered configuration system.
 
 ### Known limitations
 
-- Model selection is Claude-only in V1.1. Codex and Gemini model flags are deferred to a future release (pending CLI capability research).
+- **Model *selection* within a provider** is Claude-only in v0.1.0. All three providers (Codex, Gemini, Claude) perform reviews on every invocation — but only Claude supports choosing which underlying model (`sonnet`, `opus`, `haiku`) via `providers.claude.model` in config. Codex and Gemini use their CLI's default model. Configurable model selection for Codex and Gemini is deferred to a future release pending CLI capability research.
 - Config file paths are fixed — `~/.devils-advocate/config.json` and `.da.json` at `process.cwd()`. No environment variable override.
 - No interactive setup wizard. Users create config manually based on README examples.
 
 ---
 
-[Unreleased]: https://github.com/jarodtaylor/devils-advocate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jarodtaylor/devils-advocate/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jarodtaylor/devils-advocate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jarodtaylor/devils-advocate/releases/tag/v0.1.0

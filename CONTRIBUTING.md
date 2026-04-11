@@ -49,13 +49,25 @@ These rules define what Devil's Advocate *is*. PRs that violate them will be rej
 
 ## Tech Stack
 
-- **Language:** ESM JavaScript (`.mjs`) with TypeScript type-checking via JSDoc (`tsc --noEmit --checkJs`)
-- **No build step.** Clone and go.
+- **Language:** ESM JavaScript (`.mjs` files) with JSDoc type annotations for type safety
+- **Type checking:** `tsc --noEmit --checkJs` (strict mode — catches the same errors as real TypeScript)
+- **No build step.** Clone and go. The files in `scripts/` are the exact files Node executes.
 - **Zero runtime dependencies.** devDependencies are only `@types/node` and `typescript`.
 - **Testing:** `node --test` (Node.js built-in test runner, `node:assert/strict`)
+- **Runtime:** Node 18+ (matches Claude Code's minimum requirement)
 - **License:** MIT
 
-Adding a runtime dependency requires a strong justification in the PR description. This is a philosophical choice — the plugin ships with its source and should stay auditable.
+### Why JavaScript + JSDoc and not TypeScript?
+
+If you're expecting `.ts` files and are confused why this project doesn't have them, here's the rationale:
+
+1. **Node 18+ compatibility.** Claude Code requires Node >= 18. Node's native TypeScript support (type stripping) only became stable defaults in Node 22.18+ / 23+. Requiring `.ts` files at runtime would exclude users on Node 18, 20, and 22-pre-22.18.
+2. **No build step.** Adding `tsc` compilation would break the "clone and go" philosophy — contributors would need to run `npm run build`, and the plugin would ship with a `dist/` directory separate from the source. For an auditable code-review tool, shipping source directly is a deliberate choice.
+3. **Full type safety via JSDoc.** The `tsc --noEmit --checkJs` approach gives you the same strict type checking as a real TypeScript project. Every function is annotated, every parameter is typed, and CI fails on any type error.
+
+See the [Language & Build section of the README](README.md#language--build) for an example of how types are written. Most TypeScript features have a JSDoc equivalent — when in doubt, check the [JSDoc type syntax reference](https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html).
+
+**Adding a runtime dependency requires a strong justification in the PR description.** This is a philosophical choice — the plugin ships with its source and should stay auditable.
 
 ## Development Workflow
 
