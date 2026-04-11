@@ -220,6 +220,40 @@ Or set it globally in your user config.
 
 Devil's Advocate only reviews actual changes. Either commit your work, stage it, or use `--branch` / `--diff` to target a specific comparison.
 
+## Language & Build
+
+**This project is written in ESM JavaScript (`.mjs` files), not TypeScript.**
+
+If you're expecting `.ts` files when you open the repo, you won't find them. What you *will* find is extensive **JSDoc type annotations** that give the code full TypeScript-grade type checking via `tsc --noEmit --checkJs`. Every function is typed, every parameter is annotated, and `npm run check` fails on any type error — just like a real TypeScript project.
+
+Why this approach instead of TypeScript:
+
+- **No build step.** Contributors clone and go. The source files in `scripts/` are the exact files Node executes. No `dist/` directory, no `npm run build`, no compiled output to audit.
+- **Node 18+ compatibility.** Claude Code requires Node >= 18. Node's native TypeScript support (type stripping) only became stable in Node 22.18+ and 23+, so requiring `.ts` files at runtime would narrow our user base.
+- **Source is the shipped artifact.** When you inspect the plugin, you inspect the exact code that runs. Nothing compiled, nothing minified. Important for a tool you're giving access to your diffs.
+- **Full type safety without the ceremony.** JSDoc is more verbose than TypeScript syntax for complex types, but the type checker catches the same errors. We run `tsc --noEmit --checkJs` in CI on every PR.
+
+Example of how types look:
+
+```javascript
+/**
+ * @typedef {Object} ReviewArgs
+ * @property {string} [branch]
+ * @property {number} [timeout]
+ * @property {string[]} disable
+ */
+
+/**
+ * @param {string[]} argv
+ * @returns {ReviewArgs}
+ */
+export function parseArgs(argv) {
+  // ...
+}
+```
+
+If you're used to TypeScript and find this awkward, [JSDoc's type syntax reference](https://www.typescriptlang.org/docs/handbook/jsdoc-supported-types.html) covers everything you need. Most complex types you'd write in TS have a JSDoc equivalent.
+
 ## Contributing
 
 Pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for:

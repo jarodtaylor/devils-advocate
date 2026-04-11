@@ -4,16 +4,37 @@ Multi-model adversarial code review plugin for Claude Code. Sends diffs to exter
 
 ## Project State
 
-V1 complete and pushed to `main` (public repo: `jarodtaylor/devils-advocate`). 188 tests, 12 commits, 3 providers. First real adversarial review successfully completed.
+**v0.1.0 shipped 2026-04-10** (first public release, tagged and released on GitHub). Includes 3-provider pipeline + layered config system.
 
-**Next:** V1.1 config system. Requirements finalized at `docs/brainstorms/config-system-requirements.md`. Ready for `/ce:plan`.
+**v0.1.1 in flight** — documentation clarifications, no behavior changes.
+
+Public repo: `jarodtaylor/devils-advocate`. MIT licensed. 265 tests, 8 tagged releases prep, full CI (test + CodeQL) + branch protection + Dependabot + automated review (Claude Code Action, Copilot, Greptile).
+
+## Language (Important — not TypeScript)
+
+**This project is ESM JavaScript with JSDoc type annotations, NOT TypeScript.**
+
+- Source files are `.mjs` (ESM JavaScript), not `.ts`
+- Types come from JSDoc comments (`/** @type {...} */`, `/** @typedef */`)
+- Type checking via `tsc --noEmit --checkJs` catches the same errors as real TypeScript
+- devDependencies are only `typescript` and `@types/node` (for the type checker, not for compilation)
+
+**Why not real TypeScript:**
+1. **Node 18+ compatibility.** Claude Code's minimum Node version is 18. Node's native type stripping only became default in Node 22.18+ / 23+. Using `.ts` files at runtime would exclude users on Node 18/20/22-pre-22.18.
+2. **No build step.** The files in `scripts/` are the exact files Node executes. No `dist/`, no `npm run build`. Matches the "source is the shipped artifact" philosophy for an auditable code-review tool.
+3. **Full type safety without compilation.** JSDoc is more verbose than TS syntax for complex types, but the checker catches the same errors.
+
+**This decision is documented in README.md's "Language & Build" section** — contributors who expect `.ts` files should be redirected there, not given ad-hoc explanations.
 
 ## Tech Stack
 
-- **Language:** ESM JavaScript (`.mjs`) + TypeScript type-checking (`tsc --noEmit --checkJs`)
+- **Language:** ESM JavaScript (`.mjs` files) with JSDoc type annotations
+- **Type checking:** `tsc --noEmit --checkJs` (strict mode via tsconfig.json `"strict": true`)
 - **No build step.** Contributors clone and go.
+- **Runtime:** Node 18+ (matches Claude Code's minimum)
 - **Distribution:** Claude Code plugin (`/da:review` slash command)
-- **Testing:** `node --test` (Node.js built-in test runner)
+- **Testing:** `node --test` (Node.js built-in test runner, `node:assert/strict`)
+- **Runtime dependencies:** zero. devDependencies are only `typescript` and `@types/node`.
 - **License:** MIT
 
 ## Providers (V1)
@@ -29,7 +50,7 @@ V1 complete and pushed to `main` (public repo: `jarodtaylor/devils-advocate`). 1
 ```
 skills/review/SKILL.md          → /da:review entry point
 scripts/review.mjs              → CLI arg parsing + pipeline orchestration
-scripts/lib/config.mjs          → [V1.1] config file loading + merging
+scripts/lib/config.mjs          → config file loading + merging + validation
 scripts/lib/diff.mjs            → git diff with auto-detect + overrides
 scripts/lib/prompt.mjs          → adversarial prompt builder
 scripts/lib/providers/codex.mjs → Codex CLI adapter
@@ -62,8 +83,8 @@ prompts/adversarial-review.md   → adversarial review prompt template
 ## Commands
 
 ```bash
-npm run check    # tsc --noEmit type checking
-npm test         # node --test (188 tests)
+npm run check    # tsc --noEmit type checking (strict mode, checkJs)
+npm test         # node --test (265 tests across 59 suites)
 ```
 
 ## Development Rules
@@ -76,6 +97,9 @@ npm test         # node --test (188 tests)
 
 ## Planning Documents
 
-- `docs/brainstorms/devils-advocate-v1-requirements.md` — V1 requirements (complete)
-- `docs/plans/2026-04-10-001-feat-adversarial-review-plugin-plan.md` — V1 implementation plan (complete)
-- `docs/brainstorms/config-system-requirements.md` — V1.1 config system requirements (ready for `/ce:plan`)
+- `docs/brainstorms/devils-advocate-v1-requirements.md` — v0.1.0 initial requirements (shipped)
+- `docs/plans/2026-04-10-001-feat-adversarial-review-plugin-plan.md` — v0.1.0 initial implementation plan (shipped)
+- `docs/brainstorms/config-system-requirements.md` — config system requirements (shipped in v0.1.0)
+- `docs/plans/2026-04-10-002-feat-config-system-plan.md` — config system implementation plan (shipped in v0.1.0)
+
+Note: these docs use "V1"/"V1.1" as internal shorthand for what was eventually released as v0.1.0. Future planning documents should use actual version numbers.

@@ -18,6 +18,12 @@ Documentation and messaging clarity patch. No behavior changes.
 - **Clarified model-selection wording** across the README, CHANGELOG, and the stderr warning in `scripts/lib/config.mjs`. The previous phrasing — "Model selection is Claude-only in V1.1" — was ambiguous and could be misread as "only Claude performs reviews." All three providers (Codex, Gemini, Claude) review every invocation. The limitation is that only Claude supports configurable model selection (`sonnet`, `opus`, `haiku`) via `providers.claude.model`; Codex and Gemini use their CLI's default model.
 - Replaced remaining `V1.1` internal shorthand with the actual release version `v0.1.0` in user-facing text.
 
+### Added
+
+- **Language & Build section in README** — prominently documents that this project is ESM JavaScript with JSDoc type annotations, not TypeScript, with the full rationale (Node 18+ compatibility, no build step, source is the shipped artifact). Contributors who open the repo expecting `.ts` files now have a clear explanation and pointer to JSDoc type syntax.
+- **Expanded Tech Stack section in CONTRIBUTING.md** — adds a "Why JavaScript + JSDoc and not TypeScript?" subsection covering the same rationale for contributors browsing the contributing guide.
+- **Updated CLAUDE.md Language section** — marks the language choice as "Important — not TypeScript" and explains the decision for future Claude Code sessions working on this project.
+
 ## [0.1.0] — 2026-04-10
 
 First public release. This version establishes the full adversarial review
