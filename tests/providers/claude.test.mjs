@@ -43,10 +43,11 @@ class MockProcess extends EventEmitter {
  * @param {string} stdoutData - Data to emit on stdout.
  * @param {number} [exitCode=0]
  * @param {string} [stderrData=""]
- * @returns {(cmd: string, args: string[], opts?: object) => MockProcess}
+ * @returns {typeof import('node:child_process').spawn}
  */
 function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
-  return (_cmd, _args, _opts) => {
+  /** @type {any} */
+  const fn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
     const proc = new MockProcess();
     setImmediate(() => {
       if (stdoutData) proc.stdout.emit("data", Buffer.from(stdoutData));
@@ -55,6 +56,7 @@ function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
     });
     return proc;
   };
+  return fn;
 }
 
 /**
@@ -66,11 +68,12 @@ function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
  * @param {string} reviewStdout
  * @param {number} [reviewExitCode=0]
  * @param {string} [reviewStderr=""]
- * @returns {(cmd: string, args: string[], opts?: object) => MockProcess}
+ * @returns {typeof import('node:child_process').spawn}
  */
 function makeDetectAndReviewSpawn(installed, reviewStdout, reviewExitCode = 0, reviewStderr = "") {
   let callCount = 0;
-  return (cmd, args, opts) => {
+  /** @type {any} */
+  const fn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
     callCount++;
     if (callCount === 1) {
       // First call: sh -c command -v claude
@@ -81,6 +84,7 @@ function makeDetectAndReviewSpawn(installed, reviewStdout, reviewExitCode = 0, r
     // Subsequent calls: claude review invocation
     return makeSpawn(reviewStdout, reviewExitCode, reviewStderr)(cmd, args, opts);
   };
+  return fn;
 }
 
 // ─── Valid finding fixture ────────────────────────────────────────────────────
@@ -138,12 +142,12 @@ describe("claudeProvider.detect() — happy paths", () => {
   it("install check uses sh -c command -v claude", async () => {
     /** @type {string[][]} */
     const calls = [];
-    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
       calls.push([cmd, ...args]);
       const proc = new MockProcess();
       setImmediate(() => proc.emit("close", 0));
       return proc;
-    };
+    });
 
     const provider = buildClaudeProvider({ spawnFn });
     await provider.detect();
@@ -177,11 +181,11 @@ describe("claudeProvider.detect() — not installed", () => {
   });
 
   it("spawn error during install check → installed: false, authenticated: false", async () => {
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       setImmediate(() => proc.emit("error", new Error("ENOENT: spawn failed")));
       return proc;
-    };
+    });
 
     const provider = buildClaudeProvider({ spawnFn });
     const result = await provider.detect();
@@ -269,10 +273,10 @@ describe("claudeProvider.review() — happy paths", () => {
     const spawnCalls = [];
     const envelopeStr = makeEnvelope([]);
 
-    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
       spawnCalls.push([cmd, ...args]);
       return makeSpawn(envelopeStr, 0)(cmd, args, _opts);
-    };
+    });
 
     const provider = buildClaudeProvider({ spawnFn });
     await provider.review("diff", [], "my test prompt");
@@ -442,22 +446,22 @@ describe("claudeProvider.review() — timeout", () => {
     /** @type {MockProcess | null} */
     let capturedProc = null;
 
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       capturedProc = proc;
       // Never emit close — simulates a hanging process
       return proc;
-    };
+    });
 
     const provider = buildClaudeProvider({ spawnFn });
     const reviewPromise = provider.review("diff", [], "prompt");
 
     // Wait one tick for spawn to be registered
     await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(capturedProc !== null, "spawn should have been called");
+    assert.ok(capturedProc, "spawn should have been called");
 
     // Simulate timeout / process error
-    capturedProc.emit("error", new Error("spawn timed out"));
+    (/** @type {MockProcess} */ (capturedProc)).emit("error", new Error("spawn timed out"));
 
     await assert.rejects(reviewPromise, (err) => {
       assert.ok(err instanceof Error);
@@ -470,7 +474,7 @@ describe("claudeProvider.review() — timeout", () => {
     let capturedProc = null;
     let killCalled = false;
 
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       const origKill = proc.kill.bind(proc);
       proc.kill = (/** @type {string | undefined} */ sig) => {
@@ -480,7 +484,7 @@ describe("claudeProvider.review() — timeout", () => {
       capturedProc = proc;
       // Never emit close — hang indefinitely
       return proc;
-    };
+    });
 
     const provider = buildClaudeProvider({ spawnFn });
     const reviewPromise = provider.review("diff", [], "prompt");
@@ -489,7 +493,7 @@ describe("claudeProvider.review() — timeout", () => {
     assert.ok(capturedProc, "process should have been spawned");
 
     // Simulate the abort signal firing (as the internal AbortController would)
-    capturedProc.emit("error", new Error("SIGTERM: process terminated"));
+    (/** @type {MockProcess} */ (capturedProc)).emit("error", new Error("SIGTERM: process terminated"));
 
     await assert.rejects(reviewPromise);
   });
@@ -509,5 +513,115 @@ describe("claudeProvider.review() — return shape", () => {
     assert.ok("raw" in result, "result must have raw");
     assert.ok(Array.isArray(result.findings), "findings must be array");
     assert.equal(typeof result.raw, "string", "raw must be string");
+  });
+});
+
+// ─── model injection ──────────────────────────────────────────────────────────
+
+describe("buildClaudeProvider() — model injection", () => {
+  it("default factory → uses 'sonnet' in --model flag", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn) });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "sonnet", "default model should be sonnet");
+  });
+
+  it("buildClaudeProvider({ model: 'opus' }) → passes 'opus' to --model", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), model: "opus" });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "opus", "model should be opus");
+  });
+
+  it("buildClaudeProvider({ model: 'haiku' }) → passes 'haiku' to --model", async () => {
+    const envelopeStr = makeEnvelope([]);
+    /** @type {string[]} */
+    let capturedArgs = [];
+
+    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+      if (cmd === "claude") capturedArgs = args;
+      return makeSpawn(envelopeStr, 0)(cmd, args, opts);
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), model: "haiku" });
+    await provider.review("diff", [], "prompt");
+
+    const modelIdx = capturedArgs.indexOf("--model");
+    assert.ok(modelIdx !== -1, "should have --model flag");
+    assert.equal(capturedArgs[modelIdx + 1], "haiku", "model should be haiku");
+  });
+});
+
+// ─── timeoutMs injection ──────────────────────────────────────────────────────
+
+describe("buildClaudeProvider() — timeoutMs injection", () => {
+  it("buildClaudeProvider({ timeoutMs }) → AbortController fires before long-running process", async () => {
+    // Use a 60ms timeout (not 60s) to keep the test fast. Verifies the injected
+    // value is honored — default is 120_000ms, so 60ms firing proves override.
+    const SHORT_TIMEOUT_MS = 60;
+
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang indefinitely until timeout fires
+      return proc;
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), timeoutMs: SHORT_TIMEOUT_MS });
+
+    const start = Date.now();
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        const elapsed = Date.now() - start;
+        assert.ok(elapsed < 5000, `should reject quickly with short timeout, elapsed: ${elapsed}ms`);
+        return true;
+      }
+    );
+  });
+
+  it("error message reflects the injected timeoutMs in seconds", async () => {
+    // 50ms timeout → onAbort message: "Claude provider timed out after 0.05s"
+    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang until timeout fires
+      return proc;
+    };
+
+    const provider = buildClaudeProvider({ spawnFn: /** @type {any} */ (spawnFn), timeoutMs: 50 });
+
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(
+          err.message.includes("timed out") || err.message.includes("timeout"),
+          `expected timeout message, got: ${err.message}`
+        );
+        return true;
+      }
+    );
   });
 });

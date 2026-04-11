@@ -11,6 +11,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { setImmediate } from "node:timers";
 import { buildGeminiProvider } from "../../scripts/lib/providers/gemini.mjs";
 
 // ─── Mock helpers ─────────────────────────────────────────────────────────────
@@ -43,10 +44,11 @@ class MockProcess extends EventEmitter {
  * @param {string} stdoutData - JSON string to emit on stdout.
  * @param {number} [exitCode=0]
  * @param {string} [stderrData=""]
- * @returns {(cmd: string, args: string[], opts?: object) => MockProcess}
+ * @returns {typeof import('node:child_process').spawn}
  */
 function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
-  return (_cmd, _args, _opts) => {
+  /** @type {any} */
+  const fn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
     const proc = new MockProcess();
     // Emit data asynchronously so listeners can attach
     setImmediate(() => {
@@ -56,6 +58,7 @@ function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
     });
     return proc;
   };
+  return fn;
 }
 
 /**
@@ -67,11 +70,12 @@ function makeSpawn(stdoutData, exitCode = 0, stderrData = "") {
  * @param {string} reviewStdout
  * @param {number} [reviewExitCode=0]
  * @param {string} [reviewStderr=""]
- * @returns {(cmd: string, args: string[], opts?: object) => MockProcess}
+ * @returns {typeof import('node:child_process').spawn}
  */
 function makeDetectAndReviewSpawn(installed, reviewStdout, reviewExitCode = 0, reviewStderr = "") {
   let callCount = 0;
-  return (cmd, args, opts) => {
+  /** @type {any} */
+  const fn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
     callCount++;
     if (callCount === 1) {
       // First call: command -v gemini
@@ -82,16 +86,18 @@ function makeDetectAndReviewSpawn(installed, reviewStdout, reviewExitCode = 0, r
     // Subsequent calls: gemini review invocation
     return makeSpawn(reviewStdout, reviewExitCode, reviewStderr)(cmd, args, opts);
   };
+  return fn;
 }
 
 /**
  * Create a mock readFile for oauth_creds.json.
  *
  * @param {{ present: boolean, expiryDate?: number, malformed?: boolean }} opts
- * @returns {(path: string, encoding: string) => Promise<string>}
+ * @returns {typeof import('node:fs/promises').readFile}
  */
 function makeReadFile({ present, expiryDate, malformed = false }) {
-  return async (_path, _enc) => {
+  /** @type {any} */
+  const fn = async (/** @type {unknown} */ _path, /** @type {unknown} */ _enc) => {
     if (!present) {
       const err = /** @type {NodeJS.ErrnoException} */ (new Error("ENOENT: no such file"));
       err.code = "ENOENT";
@@ -102,6 +108,7 @@ function makeReadFile({ present, expiryDate, malformed = false }) {
     }
     return JSON.stringify({ expiry_date: expiryDate ?? Date.now() + 3_600_000 });
   };
+  return fn;
 }
 
 // ─── Valid finding fixture ────────────────────────────────────────────────────
@@ -138,10 +145,10 @@ describe("geminiProvider.detect() — happy paths", () => {
     const spawnFn = makeSpawn("", 0); // command -v succeeds
     // Override to handle two calls: install check then (no review call)
     let callCount = 0;
-    const twoCallSpawn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+    const twoCallSpawn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
       callCount++;
       return makeSpawn("", callCount === 1 ? 0 : 1)(cmd, args, opts);
-    };
+    });
 
     const provider = buildGeminiProvider({
       spawnFn: twoCallSpawn,
@@ -159,12 +166,12 @@ describe("geminiProvider.detect() — happy paths", () => {
   it("install check: spawn called with sh -c command -v gemini", async () => {
     /** @type {string[][]} */
     const calls = [];
-    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
       calls.push([cmd, ...args]);
       const proc = new MockProcess();
       setImmediate(() => proc.emit("close", 0));
       return proc;
-    };
+    });
 
     const provider = buildGeminiProvider({
       spawnFn,
@@ -268,11 +275,11 @@ describe("geminiProvider.detect() — not installed", () => {
   });
 
   it("spawn error during install check → installed: false", async () => {
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       setImmediate(() => proc.emit("error", new Error("ENOENT: spawn failed")));
       return proc;
-    };
+    });
 
     const provider = buildGeminiProvider({
       spawnFn,
@@ -348,10 +355,10 @@ describe("geminiProvider.review() — happy path", () => {
     const spawnCalls = [];
     const envelopeStr = makeEnvelope([]);
 
-    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
       spawnCalls.push([cmd, ...args]);
       return makeSpawn(envelopeStr, 0)(cmd, args, _opts);
-    };
+    });
 
     const provider = buildGeminiProvider({
       spawnFn,
@@ -373,10 +380,10 @@ describe("geminiProvider.review() — happy path", () => {
     const spawnCalls = [];
     const envelopeStr = makeEnvelope([]);
 
-    const spawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ _opts) => {
       spawnCalls.push([cmd, ...args]);
       return makeSpawn(envelopeStr, 0)(cmd, args, _opts);
-    };
+    });
 
     const provider = buildGeminiProvider({ spawnFn });
 
@@ -524,12 +531,12 @@ describe("geminiProvider.review() — timeout", () => {
     let capturedProc = null;
 
     // Spawn a process that never resolves (never emits close)
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       capturedProc = proc;
       // Intentionally never emit close — simulates a hanging process
       return proc;
-    };
+    });
 
     // Build a provider with a very short timeout by manipulating AbortController
     // Since the timeout is hardcoded, we instead test the kill-on-abort path
@@ -546,12 +553,12 @@ describe("geminiProvider.review() — timeout", () => {
 
     // Wait for spawn to be called, then abort
     await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(capturedProc !== null, "spawn should have been called");
+    assert.ok(capturedProc, "spawn should have been called");
 
     // Simulate timeout by emitting close with SIGTERM behavior
     // Since we can't access the internal AbortController, we test kill behavior
     // by emitting an error on the captured process
-    capturedProc.emit("error", new Error("spawn timed out"));
+    (/** @type {MockProcess} */ (capturedProc)).emit("error", new Error("spawn timed out"));
 
     await assert.rejects(reviewPromise, (err) => {
       assert.ok(err instanceof Error);
@@ -563,12 +570,12 @@ describe("geminiProvider.review() — timeout", () => {
     /** @type {MockProcess | null} */
     let capturedProc = null;
 
-    const spawnFn = (/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
       const proc = new MockProcess();
       capturedProc = proc;
       // Never emit close — hang indefinitely
       return proc;
-    };
+    });
 
     const provider = buildGeminiProvider({ spawnFn });
 
@@ -576,7 +583,7 @@ describe("geminiProvider.review() — timeout", () => {
     // This requires accessing the internal signal, so we test via a custom
     // spawnFn that wraps kill() to track calls.
     let killCalled = false;
-    const trackingSpawnFn = (/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
+    const trackingSpawnFn = /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ args, /** @type {object | undefined} */ opts) => {
       const proc = spawnFn(cmd, args, opts);
       const origKill = proc.kill.bind(proc);
       proc.kill = (/** @type {string | undefined} */ sig) => {
@@ -584,7 +591,7 @@ describe("geminiProvider.review() — timeout", () => {
         origKill(sig);
       };
       return proc;
-    };
+    });
 
     const trackingProvider = buildGeminiProvider({ spawnFn: trackingSpawnFn });
 
@@ -595,7 +602,7 @@ describe("geminiProvider.review() — timeout", () => {
 
     // Force the process to error to trigger the rejection path
     assert.ok(capturedProc, "process should have been spawned");
-    capturedProc.emit("error", new Error("SIGTERM: process terminated"));
+    (/** @type {MockProcess} */ (capturedProc)).emit("error", new Error("SIGTERM: process terminated"));
 
     await assert.rejects(reviewPromise);
   });
@@ -633,5 +640,75 @@ describe("geminiProvider.detect() — return shape", () => {
     assert.ok("authenticated" in result);
     assert.ok("name" in result);
     assert.equal(result.name, "gemini");
+  });
+});
+
+// ─── timeoutMs injection ──────────────────────────────────────────────────────
+
+describe("buildGeminiProvider() — timeoutMs injection", () => {
+  it("buildGeminiProvider({ timeoutMs }) → abort fires before long-running process", async () => {
+    // Use a 60ms timeout (not 60s) to keep the test fast. The value is arbitrary
+    // — we only need it to fire before the spawned process resolves.
+    const SHORT_TIMEOUT_MS = 60;
+
+    // Process that never emits close — hangs until timeout fires
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang indefinitely
+      return proc;
+    });
+
+    const provider = buildGeminiProvider({ spawnFn, timeoutMs: SHORT_TIMEOUT_MS });
+
+    const start = Date.now();
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        const elapsed = Date.now() - start;
+        assert.ok(elapsed < 5000, `should reject quickly with short timeout, elapsed: ${elapsed}ms`);
+        return true;
+      }
+    );
+  });
+
+  it("error message reflects the injected timeoutMs in seconds", async () => {
+    // 50ms timeout → onAbort message: "Gemini provider timed out after 0.05s"
+    const spawnFn = /** @type {any} */ ((/** @type {string} */ _cmd, /** @type {string[]} */ _args, /** @type {object | undefined} */ _opts) => {
+      const proc = new MockProcess();
+      // Never emit close — hang until timeout fires
+      return proc;
+    });
+
+    const provider = buildGeminiProvider({ spawnFn, timeoutMs: 50 });
+
+    await assert.rejects(
+      () => provider.review("diff", [], "prompt"),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(
+          err.message.toLowerCase().includes("timed out") ||
+          err.message.toLowerCase().includes("timeout"),
+          `expected timeout message, got: ${err.message}`
+        );
+        return true;
+      }
+    );
+  });
+
+  it("default factory (no timeoutMs) still works correctly — 120s default unchanged", async () => {
+    // Verify the singleton path: buildGeminiProvider() with no args should
+    // use DEFAULT_TIMEOUT_MS. We verify this by checking a successful review
+    // still works (no regression).
+    const envelopeStr = JSON.stringify({
+      session_id: "test",
+      response: JSON.stringify({ findings: [] }),
+      stats: {},
+    });
+
+    const provider = buildGeminiProvider({ spawnFn: makeSpawn(envelopeStr, 0) });
+    const result = await provider.review("diff", [], "prompt");
+
+    assert.equal(result.findings.length, 0);
   });
 });

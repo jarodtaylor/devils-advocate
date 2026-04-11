@@ -211,6 +211,39 @@ function renderVerbose(rawOutputs) {
   return ["### Raw provider output", "", ...blocks].join("\n\n");
 }
 
+// ─── Config header ──────────────────────────────────────────────────────────
+
+/**
+ * Render the resolved config as a single-line header (R15).
+ * Shows active providers (from matchResult), model info, timeout, and disabled list.
+ *
+ * @param {import('./config.mjs').ResolvedConfig} config
+ * @param {string[]} activeProviderNames - Providers that actually produced results.
+ * @returns {string}
+ */
+function renderConfigHeader(config, activeProviderNames) {
+  // Format each active provider name, adding model in parentheses for claude
+  const providerParts = activeProviderNames.map((name) => {
+    if (name === "claude" && config.providers.claude.model) {
+      return `${name} (${config.providers.claude.model})`;
+    }
+    return name;
+  });
+
+  const segments = [`**Providers:** ${providerParts.join(", ")}`];
+  segments.push(`**Timeout:** ${config.timeout}s`);
+
+  // List disabled providers
+  const disabled = Object.entries(config.providers)
+    .filter(([, cfg]) => cfg.enabled === false)
+    .map(([name]) => name);
+  if (disabled.length > 0) {
+    segments.push(`**Disabled:** ${disabled.join(", ")}`);
+  }
+
+  return segments.join(" | ");
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -220,6 +253,7 @@ function renderVerbose(rawOutputs) {
  * @property {boolean} [verbose] - When true, append raw provider output at the bottom.
  * @property {Map<string, string>} [rawOutputs] - Map from provider name → raw CLI output.
  *   Required when verbose is true to be useful.
+ * @property {import('./config.mjs').ResolvedConfig} [config] - Resolved config for header display.
  */
 
 /**
@@ -249,10 +283,24 @@ export function generateReport(matchResult, providerFailures, options = {}) {
 
   // No findings at all from any provider.
   if (totalFindings === 0 && providerFailures.size === 0) {
-    return ["## Devil's Advocate Review", "", "No issues found by any provider."].join("\n");
+    const cleanParts = ["## Devil's Advocate Review", ""];
+    // R15: config header must render even on clean runs so users see
+    // which providers actually ran and with what settings.
+    if (options.config) {
+      cleanParts.push(renderConfigHeader(options.config, providerNames));
+      cleanParts.push("");
+    }
+    cleanParts.push("No issues found by any provider.");
+    return cleanParts.join("\n");
   }
 
   const parts = ["## Devil's Advocate Review", ""];
+
+  // Config header (R15) — only when config is provided (backward compat).
+  if (options.config) {
+    parts.push(renderConfigHeader(options.config, providerNames));
+    parts.push("");
+  }
 
   // Summary stats.
   parts.push(renderSummary(matchResult, providerNames));

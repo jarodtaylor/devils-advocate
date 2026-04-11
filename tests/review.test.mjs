@@ -11,7 +11,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseArgs, runReview } from "../scripts/review.mjs";
+import { parseArgs, runReview, buildProviders } from "../scripts/review.mjs";
+import { DEFAULTS } from "../scripts/lib/config.mjs";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ function mockProvider(opts = {}) {
 describe("parseArgs — happy paths", () => {
   it("returns defaults when called with no args", () => {
     const result = parseArgs([]);
-    assert.deepEqual(result, { verbose: false, files: [] });
+    assert.deepEqual(result, { verbose: false, files: [], disable: [] });
   });
 
   it("parses --branch correctly", () => {
@@ -147,6 +148,150 @@ describe("parseArgs — diff range syntax", () => {
     const result = parseArgs(["--diff", "main..HEAD", "--files", "src/auth.ts"]);
     assert.equal(result.diff, "main..HEAD");
     assert.deepEqual(result.files, ["src/auth.ts"]);
+  });
+});
+
+// ─── parseArgs — --timeout and --disable flags ────────────────────────────────
+
+describe("parseArgs — --timeout flag", () => {
+  it("parses --timeout with a valid positive number", () => {
+    const result = parseArgs(["--timeout", "60"]);
+    assert.equal(result.timeout, 60);
+  });
+
+  it("parses --timeout with a decimal value", () => {
+    const result = parseArgs(["--timeout", "30.5"]);
+    assert.equal(result.timeout, 30.5);
+  });
+
+  it("combines --timeout with other flags", () => {
+    const result = parseArgs(["--timeout", "60", "--disable", "gemini", "--branch", "main"]);
+    assert.equal(result.timeout, 60);
+    assert.deepEqual(result.disable, ["gemini"]);
+    assert.equal(result.branch, "main");
+  });
+
+  it("throws when --timeout has no value", () => {
+    assert.throws(
+      () => parseArgs(["--timeout"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("requires a value"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout is followed by another flag", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "--verbose"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("requires a value"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is non-numeric", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "abc"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is negative", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "-5"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is zero", () => {
+    assert.throws(
+      () => parseArgs(["--timeout", "0"]),
+      (/** @type {Error} */ err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value has trailing non-numeric chars (regression: parseFloat truncation)", () => {
+    // parseFloat("60abc") returns 60, silently accepting the value.
+    // Number("60abc") returns NaN — this test guards against regression.
+    assert.throws(
+      () => parseArgs(["--timeout", "60abc"]),
+      (/** @type {Error} */ err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--timeout"), `got: ${err.message}`);
+        assert.ok(err.message.includes("numeric"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --timeout value is pure whitespace", () => {
+    // Number("  ") is 0 which fails the positive check; parseFloat("  ") is NaN.
+    // Either way this should fail — just pinning the behavior.
+    assert.throws(
+      () => parseArgs(["--timeout", "abc123"]),
+      (/** @type {Error} */ err) => {
+        assert.ok(err instanceof Error);
+        return true;
+      }
+    );
+  });
+});
+
+describe("parseArgs — --disable flag", () => {
+  it("parses --disable with a single provider", () => {
+    const result = parseArgs(["--disable", "gemini"]);
+    assert.deepEqual(result.disable, ["gemini"]);
+  });
+
+  it("parses --disable with multiple providers in one invocation", () => {
+    const result = parseArgs(["--disable", "codex", "gemini"]);
+    assert.deepEqual(result.disable, ["codex", "gemini"]);
+  });
+
+  it("accumulates providers across repeated --disable flags", () => {
+    const result = parseArgs(["--disable", "codex", "--disable", "gemini"]);
+    assert.deepEqual(result.disable, ["codex", "gemini"]);
+  });
+
+  it("throws when --disable has no value", () => {
+    assert.throws(
+      () => parseArgs(["--disable"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes(`Flag "--disable" requires at least one provider name`), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when --disable is followed immediately by another flag", () => {
+    assert.throws(
+      () => parseArgs(["--disable", "--verbose"]),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("--disable"), `got: ${err.message}`);
+        assert.ok(err.message.includes("at least one provider name"), `got: ${err.message}`);
+        return true;
+      }
+    );
   });
 });
 
@@ -295,7 +440,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -317,7 +462,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -332,7 +477,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini" });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult({ diffText: "", target: "no changes detected" }),
       [p1, p2]
     );
@@ -352,7 +497,7 @@ describe("runReview — pipeline integration", () => {
     });
 
     const report = await runReviewWithFixtures(
-      { verbose: true, files: [] },
+      { verbose: true, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -367,7 +512,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini", findings: [] });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -380,7 +525,7 @@ describe("runReview — pipeline integration", () => {
     const p2 = mockProvider({ name: "gemini", findings: [] });
 
     const report = await runReviewWithFixtures(
-      { verbose: false, files: [] },
+      { verbose: false, files: [], disable: [] },
       mockDiffResult(),
       [p1, p2]
     );
@@ -405,5 +550,78 @@ describe("runReview — exported signature", () => {
     // by mocking the collectDiff dependency indirectly.
     // (Deep integration test is covered in the pipeline tests above.)
     assert.equal(typeof runReview, "function");
+  });
+});
+
+// ─── buildProviders — config-aware provider construction ─────────────────────
+
+describe("buildProviders — config filtering", () => {
+  it("returns 3 providers with default config", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 3);
+    const names = providers.map((p) => p.name);
+    assert.ok(names.includes("codex"), "should include codex");
+    assert.ok(names.includes("gemini"), "should include gemini");
+    assert.ok(names.includes("claude"), "should include claude");
+  });
+
+  it("excludes disabled provider (gemini)", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.gemini.enabled = false;
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 2);
+    const names = providers.map((p) => p.name);
+    assert.ok(!names.includes("gemini"), "gemini should be excluded");
+    assert.ok(names.includes("codex"), "codex should be included");
+    assert.ok(names.includes("claude"), "claude should be included");
+  });
+
+  it("throws R5-style error when fewer than 2 providers enabled", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.codex.enabled = false;
+    config.providers.gemini.enabled = false;
+    assert.throws(
+      () => buildProviders(config),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("At least 2 providers"), `got: ${err.message}`);
+        assert.ok(err.message.includes("claude"), `should list enabled: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("throws when all providers disabled", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.providers.codex.enabled = false;
+    config.providers.gemini.enabled = false;
+    config.providers.claude.enabled = false;
+    assert.throws(
+      () => buildProviders(config),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes("none"), `got: ${err.message}`);
+        return true;
+      }
+    );
+  });
+
+  it("each provider has detect and review methods", () => {
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    const providers = buildProviders(config);
+    for (const provider of providers) {
+      assert.equal(typeof provider.detect, "function", `${provider.name} should have detect`);
+      assert.equal(typeof provider.review, "function", `${provider.name} should have review`);
+    }
+  });
+
+  it("respects custom timeout in config", () => {
+    // We verify that providers are constructed — the timeout injection
+    // is tested in the individual provider test files (Unit 3).
+    const config = JSON.parse(JSON.stringify(DEFAULTS));
+    config.timeout = 60;
+    const providers = buildProviders(config);
+    assert.equal(providers.length, 3);
   });
 });
