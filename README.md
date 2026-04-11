@@ -272,6 +272,10 @@ All contributors are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes. This project follows [Semantic Versioning](https://semver.org/) — pre-1.0 releases may include breaking changes in minor bumps, as is convention for 0.x.
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned work, deferred features, and things that are explicitly out of scope. Priorities are aspirational — open an issue if something there matters to you.
+
 ## License
 
 MIT
