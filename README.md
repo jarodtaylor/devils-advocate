@@ -163,10 +163,10 @@ Team-shared settings committed to the repo — enforce Claude on `opus` for this
 | `providers.codex.enabled` | boolean | `true` | Set to `false` to skip Codex entirely (no detect, no review) |
 | `providers.gemini.enabled` | boolean | `true` | Set to `false` to skip Gemini entirely |
 | `providers.claude.enabled` | boolean | `true` | Set to `false` to skip Claude entirely |
-| `providers.claude.model` | string | `"sonnet"` | Claude model identifier (`sonnet`, `opus`, `haiku`). Only Claude supports model selection in v0.1.0 — Codex and Gemini use their CLI's default model. |
+| `providers.claude.model` | string | `"sonnet"` | Claude model identifier (`sonnet`, `opus`, `haiku`). Currently only Claude supports configurable model selection — Codex and Gemini use their CLI's default model. |
 | `timeout` | number | `120` | Per-provider timeout in **seconds**. Applied uniformly to all providers. |
 
-**Unknown provider names or the `model` field on non-Claude providers** produce a clear error with the file path, so typos fail fast.
+**Unknown provider names** in your config produce a clear `ConfigError` with the file path, so typos fail fast. Setting the `model` field on Codex or Gemini produces a stderr warning and is ignored (not a hard error).
 
 **Minimum 2 providers:** if your config disables enough providers that fewer than 2 remain enabled, `/da:review` will refuse to run with a clear error message.
 
@@ -203,7 +203,7 @@ Your config file has a JSON syntax error or invalid field. The error message inc
 
 - Trailing commas (not valid in JSON)
 - Negative or zero `timeout` (must be a positive number)
-- `model` field set on Codex or Gemini (only `claude` supports `model` in v0.1.0)
+- `model` field set on Codex or Gemini (currently only `claude` supports the `model` field — produces a stderr warning, not a hard error)
 - Unknown provider names (must be `codex`, `gemini`, or `claude`)
 
 ### Provider review takes too long

@@ -4,11 +4,11 @@ Multi-model adversarial code review plugin for Claude Code. Sends diffs to exter
 
 ## Project State
 
-**v0.1.0 shipped 2026-04-10** (first public release, tagged and released on GitHub). Includes 3-provider pipeline + layered config system.
+**First public release: v0.1.0** (2026-04-10) — tagged and released on GitHub. Includes the 3-provider adversarial review pipeline and the layered config system.
 
-**v0.1.1 in flight** — documentation clarifications, no behavior changes.
+See `CHANGELOG.md` for the current release history. The version in `package.json` is the source of truth for the current version — don't hardcode version numbers in docs or code unless you're writing a changelog entry.
 
-Public repo: `jarodtaylor/devils-advocate`. MIT licensed. 265 tests, 8 tagged releases prep, full CI (test + CodeQL) + branch protection + Dependabot + automated review (Claude Code Action, Copilot, Greptile).
+Public repo: `jarodtaylor/devils-advocate`. MIT licensed. 265 tests across 59 suites. Full CI (test + CodeQL) + branch protection + Dependabot + automated review (Claude Code Action, Copilot, Greptile).
 
 ## Language (Important — not TypeScript)
 
